@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: infinity-pools
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/bootstrap
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data/data
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+    disk:
+      name: app-data
+      mountPath: /var/data
+      sizeGB: 2

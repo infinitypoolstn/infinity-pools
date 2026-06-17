@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinity Pools — Build Manager</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♾️</text></svg>">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="inf">∞</div>
+      <div class="name">INFINITY POOLS</div>
+      <div class="tag">BUILD MANAGER</div>
+    </div>
+    <nav class="nav" id="nav">
+      <a href="#/" data-view="dashboard">🏠 Dashboard</a>
+      <a href="#/clients" data-view="clients">👥 Clients</a>
+      <a href="#/tasks" data-view="tasks">✅ Tasks</a>
+      <a href="#/employees" data-view="employees">👷 Employees</a>
+      <a href="#/contractors" data-view="contractors">🛠️ Contractors</a>
+      <a href="#/design" data-view="design">🎨 Design Library</a>
+      <a href="#/alerts" data-view="alerts">🔔 Alerts <span class="badge" id="alertBadge" style="display:none"></span></a>
+      <a href="#/settings" data-view="settings">⚙️ Settings</a>
+    </nav>
+  </aside>
+  <main class="main" id="main">Loading…</main>
+</div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+<script src="/app.js"></script>
+</body>
+</html>

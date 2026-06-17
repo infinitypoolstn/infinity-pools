@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Pool Build — Infinity Pools</title>
+<style>
+  :root {
+    --blue:#0a5ea8; --blue-dark:#0b4d87; --blue-deep:#093d6b;
+    --past:#9aa7b2; --future:#a8c4da; --pale:#e8f3fb; --soft:#d7e8f5;
+    --ink:#16324a; --mid:#4a6b85; --green:#1f8a4c; --amber:#b97d10;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",system-ui,Arial,sans-serif; background:linear-gradient(180deg,#eaf4fc 0%,#f6fafd 300px); color:var(--ink); }
+  .wrap { max-width:880px; margin:0 auto; padding:20px 16px 60px; }
+  header { background:linear-gradient(135deg,var(--blue-dark),var(--blue)); color:#fff; border-radius:16px; padding:26px 30px; box-shadow:0 8px 30px rgba(10,94,168,.25); }
+  header .brand { font-weight:800; letter-spacing:3px; font-size:18px; }
+  header .brand .inf { font-size:26px; vertical-align:-3px; margin-right:6px; }
+  header h1 { margin:10px 0 2px; font-size:26px; }
+  header .sub { opacity:.85; font-size:14px; }
+  .card { background:#fff; border:1px solid var(--soft); border-radius:16px; box-shadow:0 2px 14px rgba(10,94,168,.07); padding:24px; margin-top:18px; }
+  h2 { margin:0 0 14px; color:var(--blue-deep); font-size:19px; }
+  .muted { color:var(--mid); font-size:13px; }
+
+  /* tracker */
+  .tracker { display:flex; align-items:flex-start; margin:8px 0 4px; }
+  .step { flex:1; text-align:center; position:relative; }
+  .step .dot { width:34px; height:34px; border-radius:50%; margin:0 auto; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; background:#fff; border:3px solid var(--future); color:var(--future); position:relative; z-index:2; transition:all .3s; }
+  .step .bar { position:absolute; top:16px; left:-50%; width:100%; height:4px; background:var(--future); z-index:1; }
+  .step:first-child .bar { display:none; }
+  .step .lbl { margin-top:8px; font-size:11.5px; font-weight:700; color:var(--future); line-height:1.25; padding:0 2px; }
+  .step.past .dot { background:var(--past); border-color:var(--past); color:#fff; }
+  .step.past .bar { background:var(--past); }
+  .step.past .lbl { color:var(--past); font-weight:600; }
+  .step.current .dot { background:var(--blue); border-color:var(--blue); color:#fff; transform:scale(1.25); box-shadow:0 0 0 6px rgba(10,94,168,.18); animation:pulse 2s infinite; }
+  .step.current .bar { background:var(--past); }
+  .step.current .lbl { color:var(--blue); font-weight:800; font-size:12.5px; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 6px rgba(10,94,168,.18);} 50%{ box-shadow:0 0 0 11px rgba(10,94,168,.08);} }
+
+  .due-banner { display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between; background:var(--pale); border:1px solid var(--soft); border-radius:12px; padding:16px 20px; margin-top:16px; }
+  .due-banner .amt { font-size:26px; font-weight:800; color:var(--blue-dark); }
+  .paybtn { background:var(--green); color:#fff; text-decoration:none; padding:13px 26px; border-radius:10px; font-weight:700; font-size:15px; }
+  .paid { color:var(--green); font-weight:800; font-size:16px; }
+  .todo { background:#fef4dc; border:1px solid #f3e3b5; border-radius:12px; padding:14px 18px; margin-top:14px; }
+  .todo b { color:var(--amber); }
+  .todo ul { margin:6px 0 0 18px; padding:0; }
+
+  .phase-list { margin-top:6px; }
+  .phase-item { display:flex; gap:14px; padding:13px 6px; border-bottom:1px solid #eef4fa; }
+  .phase-item:last-child { border-bottom:none; }
+  .phase-item .ico { font-size:20px; width:28px; text-align:center; flex-shrink:0; }
+  .phase-item .nm { font-weight:700; }
+  .phase-item.past { color:var(--past); }
+  .phase-item.past .nm { color:var(--past); }
+  .phase-item.current { background:var(--pale); border-radius:10px; }
+  .phase-item.current .nm { color:var(--blue); font-size:15.5px; }
+  .phase-item.future { color:var(--future); }
+  .phase-item.future .nm { color:#7da3c4; }
+  .phase-item .desc { font-size:13px; }
+
+  .fin-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+  .fin { border:2px solid var(--soft); border-radius:12px; overflow:hidden; background:#fff; }
+  .fin img,.fin .cb { width:100%; height:86px; object-fit:cover; display:block; }
+  .fin .nm { padding:8px 10px; font-size:12.5px; font-weight:700; }
+  .fin .nm small { display:block; color:var(--mid); font-weight:500; }
+
+  svg .raise { transition:all 1s ease; }
+  footer { text-align:center; margin-top:28px; color:var(--mid); font-size:12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">Loading your project…</div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => '$' + (Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '';
+
+// Animated pool cross-section. stage: 0 design,1 lotprep,2 excavation,3 forming,4 shotcrete,5 tile,6 fill/complete
+function poolSvg(stage, finishColor) {
+  const fc = finishColor || '#2f7fae';
+  const sky = stage >= 6 ? '#bfe3f7' : '#dceaf5';
+  return `
+  <svg viewBox="0 0 700 300" width="100%" style="max-height:300px;display:block">
+    <defs>
+      <linearGradient id="waterG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#6fc3ef"/><stop offset="100%" stop-color="${fc}"/>
+      </linearGradient>
+      <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+        <path d="M20 0H0V20" fill="none" stroke="#9ec9ec" stroke-width="1"/>
+      </pattern>
+      <pattern id="rebar" width="26" height="26" patternUnits="userSpaceOnUse">
+        <path d="M0 13H26 M13 0V26" stroke="#8a6d3b" stroke-width="2.5"/>
+      </pattern>
+      <clipPath id="poolClip"><path d="M150 150 L150 250 Q150 265 165 265 L535 265 Q550 265 550 250 L550 195 L420 195 L420 150 Z"/></clipPath>
+    </defs>
+    <rect width="700" height="300" fill="${sky}"/>
+    ${stage >= 6 ? '<circle cx="630" cy="48" r="26" fill="#ffd76e"/><circle cx="630" cy="48" r="34" fill="#ffd76e" opacity=".3"/>' : ''}
+    <!-- ground -->
+    <rect y="140" width="700" height="160" fill="${stage === 0 ? '#eef5fb' : '#c9b18c'}"/>
+    <rect y="140" width="700" height="12" fill="${stage === 0 ? '#dce9f4' : '#9fbf6e'}"/>
+    ${stage === 0 ? `
+      <rect y="0" width="700" height="300" fill="url(#grid)" opacity=".6"/>
+      <path d="M150 150 L150 250 Q150 265 165 265 L535 265 Q550 265 550 250 L550 195 L420 195 L420 150 Z"
+        fill="none" stroke="#0a5ea8" stroke-width="3" stroke-dasharray="10 7"/>
+      <text x="350" y="120" text-anchor="middle" font-family="Segoe UI" font-size="20" font-weight="700" fill="#0a5ea8">YOUR POOL — DESIGN IN PROGRESS</text>
+      <text x="350" y="220" text-anchor="middle" font-family="Segoe UI" font-size="13" fill="#4a87b9">finalizing finishes · engineering · permits</text>` : ''}
+    ${stage === 1 ? `
+      <text x="350" y="100" text-anchor="middle" font-family="Segoe UI" font-size="18" font-weight="700" fill="#0a5ea8">PREPARING YOUR LOT</text>
+      ${[80,180,280,380,480,580].map(x=>`<rect x="${x}" y="118" width="6" height="26" fill="#a4744a"/><rect x="${x-14}" y="122" width="34" height="4" fill="#d98c3f"/>`).join('')}
+      <rect x="600" y="96" width="70" height="48" rx="6" fill="#e8a33d"/><circle cx="615" cy="150" r="10" fill="#444"/><circle cx="655" cy="150" r="10" fill="#444"/>` : ''}
+    ${stage >= 2 ? `<path d="M150 150 L150 250 Q150 265 165 265 L535 265 Q550 265 550 250 L550 195 L420 195 L420 150 Z" fill="${stage >= 4 ? '#b9c4cc' : '#8a6a45'}"/>` : ''}
+    ${stage === 2 ? `<text x="350" y="100" text-anchor="middle" font-family="Segoe UI" font-size="18" font-weight="700" fill="#0a5ea8">EXCAVATION UNDERWAY</text>
+      <path d="M560 110 l40 -26 l24 8 l-18 30 z" fill="#e8a33d"/><rect x="598" y="118" width="56" height="34" rx="6" fill="#e8a33d"/><circle cx="612" cy="158" r="11" fill="#444"/><circle cx="644" cy="158" r="11" fill="#444"/>` : ''}
+    ${stage === 3 ? `<g clip-path="url(#poolClip)"><rect x="140" y="140" width="420" height="135" fill="url(#rebar)" opacity=".85"/></g>
+      <text x="350" y="100" text-anchor="middle" font-family="Segoe UI" font-size="18" font-weight="700" fill="#0a5ea8">FORMS, REBAR, PLUMBING & ELECTRICAL</text>
+      <circle cx="200" cy="262" r="5" fill="#3a87c8"/><circle cx="500" cy="262" r="5" fill="#3a87c8"/>` : ''}
+    ${stage === 4 ? `<path d="M150 150 L150 250 Q150 265 165 265 L535 265 Q550 265 550 250 L550 195 L420 195 L420 150 Z" fill="none" stroke="#7d8a94" stroke-width="14" stroke-linejoin="round"/>
+      <text x="350" y="100" text-anchor="middle" font-family="Segoe UI" font-size="18" font-weight="700" fill="#0a5ea8">SHOTCRETE SHELL COMPLETE — CURING</text>` : ''}
+    ${stage >= 5 ? `<path d="M150 150 L150 250 Q150 265 165 265 L535 265 Q550 265 550 250 L550 195 L420 195 L420 150 Z" fill="${fc}" opacity="${stage === 5 ? 1 : .9}"/>
+      <rect x="150" y="150" width="270" height="9" fill="#fff" opacity=".9"/><rect x="420" y="186" width="130" height="9" fill="#fff" opacity=".9"/>` : ''}
+    ${stage === 5 ? `<text x="350" y="100" text-anchor="middle" font-family="Segoe UI" font-size="18" font-weight="700" fill="#0a5ea8">TILE, COPING & YOUR PEBBLE FINISH</text>` : ''}
+    ${stage >= 6 ? `
+      <g clip-path="url(#poolClip)">
+        <rect class="raise" x="140" y="158" width="430" height="120" fill="url(#waterG)" opacity=".93">
+          <animate attributeName="y" from="265" to="158" dur="2.2s" fill="freeze"/>
+          <animate attributeName="height" from="0" to="120" dur="2.2s" fill="freeze"/>
+        </rect>
+        <path d="M140 163 Q170 156 200 163 T260 163 T320 163 T380 163 T440 163 T500 163 T560 163 V172 H140 Z" fill="#ffffff" opacity=".55">
+          <animateTransform attributeName="transform" type="translate" values="0 0; -28 0; 0 0" dur="5s" repeatCount="indefinite"/>
+        </path>
+        <circle cx="240" cy="210" r="4" fill="#fff" opacity=".5"><animate attributeName="cy" values="240;170" dur="3.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;0" dur="3.4s" repeatCount="indefinite"/></circle>
+        <circle cx="330" cy="226" r="3" fill="#fff" opacity=".5"><animate attributeName="cy" values="250;172" dur="4.2s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;0" dur="4.2s" repeatCount="indefinite"/></circle>
+        <circle cx="470" cy="216" r="4" fill="#fff" opacity=".5"><animate attributeName="cy" values="244;176" dur="3.8s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;0" dur="3.8s" repeatCount="indefinite"/></circle>
+      </g>
+      <text x="350" y="100" text-anchor="middle" font-family="Segoe UI" font-size="19" font-weight="800" fill="#0a5ea8">${stage > 6 ? 'YOUR POOL IS READY! 🎉' : 'FILLING & ACTIVATION — ALMOST SWIM TIME!'}</text>` : ''}
+    <!-- deck line -->
+    <rect x="0" y="140" width="150" height="10" fill="#e3e8ec"/><rect x="550" y="140" width="150" height="10" fill="#e3e8ec"/>
+  </svg>`;
+}
+
+const ICONS = ['📐','🚧','🚜','🔩','🏗️','🎨','🏊'];
+
+(async function init() {
+  const token = location.pathname.split('/').pop();
+  let d;
+  try {
+    const res = await fetch('/api/portal/' + token);
+    if (!res.ok) throw new Error();
+    d = await res.json();
+  } catch (e) {
+    $('#wrap').innerHTML = '<div class="card"><h2>Project not found</h2><p class="muted">Please check your link or contact Infinity Pools.</p></div>';
+    return;
+  }
+  const phases = d.phases;
+  const curIdx = phases.findIndex(p => p.status === 'active');
+  const doneAll = phases.every(p => p.status === 'complete');
+  const stage = doneAll ? 7 : Math.max(curIdx, 0);
+  const cur = curIdx >= 0 ? phases[curIdx] : null;
+  const finishColor = (d.selectedFinishes.find(f => f.color) || {}).color;
+
+  const stepCls = (p, i) => p.status === 'complete' ? 'past' : (p.status === 'active' ? 'current' : 'future');
+
+  $('#wrap').innerHTML = `
+    <header>
+      <div class="brand"><span class="inf">∞</span>INFINITY POOLS</div>
+      <h1>${esc(d.address)}</h1>
+      <div class="sub">${esc(d.name)} — ${doneAll ? 'your pool build is complete! 🎉' : cur ? 'currently in the ' + esc(cur.name) + ' phase' : 'getting ready to start'}</div>
+    </header>
+
+    ${d.clientTodos.length ? `<div class="todo"><b>⚠️ Action needed from you:</b><ul>${d.clientTodos.map(t => '<li>' + esc(t.text) + '</li>').join('')}</ul></div>` : ''}
+
+    <div class="card">
+      <h2>Build Tracker</h2>
+      <div class="tracker">
+        ${phases.map((p, i) => `<div class="step ${stepCls(p, i)}"><div class="bar"></div><div class="dot">${p.status === 'complete' ? '✓' : i + 1}</div><div class="lbl">${esc(p.clientLabel)}</div></div>`).join('')}
+      </div>
+      <div style="margin-top:18px">${poolSvg(stage, finishColor)}</div>
+      ${cur ? `
+        <div style="margin-top:16px">
+          <div style="font-weight:800;color:var(--blue);font-size:17px">Now: ${esc(cur.name)} ${cur.dueDate ? '<span class="muted" style="font-weight:600">· target ' + fmtDate(cur.dueDate) + '</span>' : ''}</div>
+          <p style="margin:6px 0 0">${esc(cur.clientSummary)}</p>
+        </div>
+        ${cur.amountDue > 0 ? `
+          <div class="due-banner">
+            <div>
+              <div class="muted">Deposit due for this phase (${cur.drawPct}% draw)</div>
+              <div class="amt">${money(cur.amountDue)}</div>
+              ${d.feeNotes.length ? `<div class="muted">${d.feeNotes.map(esc).join(' · ')} · no fee for checks</div>` : ''}
+            </div>
+            ${cur.paymentReceivedAt
+              ? '<div class="paid">✓ Paid — thank you!</div>'
+              : cur.paymentLink
+                ? `<a class="paybtn" href="${esc(cur.paymentLink)}" target="_blank" rel="noopener">Pay securely with QuickBooks →</a>`
+                : '<div class="muted">Your secure QuickBooks payment link is on its way by email.</div>'}
+          </div>
+          ${!cur.paymentReceivedAt ? `<p class="muted" style="margin-top:10px">🔒 Payments are processed by Intuit QuickBooks on their secure site. Infinity Pools never sees your card or bank details, and you'll receive an emailed receipt instantly.</p>` : ''}` : ''}` : ''}
+    </div>
+
+    <div class="card">
+      <h2>All Phases</h2>
+      <div class="phase-list">
+        ${phases.map((p, i) => `
+          <div class="phase-item ${stepCls(p, i)}">
+            <div class="ico">${p.status === 'complete' ? '✅' : ICONS[i] || '🔹'}</div>
+            <div>
+              <div class="nm">${esc(p.name)} <span class="muted" style="font-weight:500">· ${esc(p.time)}${p.completedAt ? ' · completed ' + fmtDate(p.completedAt) : p.status === 'active' && p.dueDate ? ' · target ' + fmtDate(p.dueDate) : ''}</span></div>
+              <div class="desc">${esc(p.clientSummary)}</div>
+              ${p.drawPct > 0 ? `<div class="muted" style="margin-top:3px">${p.drawPct}% draw — ${money(p.amountDue)}${p.paymentReceivedAt ? ' · ✓ paid' : ''}</div>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    ${d.selectedFinishes.length ? `
+    <div class="card">
+      <h2>Your Design Selections</h2>
+      <div class="fin-grid">
+        ${d.selectedFinishes.map(f => `<div class="fin">${f.image ? `<img src="${esc(f.image)}" alt="${esc(f.name)}">` : `<div class="cb" style="background:${esc(f.color || '#8fb8d4')}"></div>`}<div class="nm">${esc(f.name)}<small>${esc(f.brand || '')}</small></div></div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <footer>Infinity Pools · Questions? Just reply to any of our emails — we're happy to help.</footer>`;
+})();
+</script>
+</body>
+</html>
