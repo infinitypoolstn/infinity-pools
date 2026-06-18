@@ -198,8 +198,9 @@ window.editClientInfo = function (id) {
     <label class="fld">Phone<input type="tel" id="ePhone" value="${esc(c.phone)}"></label>
     <label class="fld">Status<select id="eStatus">${Object.entries(statusLabel).map(([k, v]) => `<option value="${k}" ${c.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     <div style="display:flex;gap:10px;justify-content:space-between;margin-top:14px">
-      <button class="btn danger" onclick="deleteClient('${c.id}')">Delete Client</button>
-      <span><button class="btn secondary" onclick="closeModal()">Cancel</button>
+      <span><button class="btn danger" onclick="deleteClient('${c.id}')">Delete</button>
+      <button class="btn secondary" onclick="startOverProject('${c.id}')">Cancel / Start Over</button></span>
+      <span><button class="btn secondary" onclick="closeModal()">Close</button>
       <button class="btn" onclick="saveClientInfo('${c.id}')">Save</button></span>
     </div>`);
 };
@@ -212,6 +213,13 @@ window.saveClientInfo = async function (id) {
 window.deleteClient = async function (id) {
   if (!confirm('Delete this client and all their data? This cannot be undone.')) return;
   await api('DELETE', '/api/clients/' + id); await reload(); closeModal(); location.hash = '#/clients';
+};
+window.startOverProject = async function (id) {
+  if (!confirm('Cancel / Start Over this build?\n\nClears: all phases, the contract (un-signs it), payments, change orders, and QuickBooks links.\nKeeps: the client, contact info, address, quote/pricing, specs, finishes, and files.\n\nThis cannot be undone. Note: any QuickBooks estimate or invoices already created are NOT deleted — void those in QuickBooks if needed.')) return;
+  try {
+    await api('POST', '/api/clients/' + id + '/reset');
+    await reload(); closeModal(); route(); toast('Build reset — ready to start over');
+  } catch (e) { toast(e.message, true); }
 };
 
 /* ---------- Specs tab ---------- */

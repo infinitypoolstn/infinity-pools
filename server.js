@@ -189,6 +189,14 @@ app.delete('/api/clients/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Cancel / Start Over: reset the build, keep the client record.
+app.post('/api/clients/:id/reset', (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  store.resetBuild(c);
+  store.addAlert(`${c.address || c.name}: build reset (Cancel / Start Over) — phases, contract, and QuickBooks links cleared.`, { clientId: c.id, type: 'info' });
+  res.json({ client: c });
+});
+
 // ---------------------------------------------------------------------------
 // Phases
 // ---------------------------------------------------------------------------
