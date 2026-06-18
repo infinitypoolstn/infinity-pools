@@ -29,7 +29,9 @@ const app = express();
 const APP_USER = process.env.APP_USER || '';
 const APP_PASS = process.env.APP_PASS || '';
 if (APP_USER && APP_PASS) {
-  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/adobe-sign'];
+  // Public (no Basic Auth): health check, client portal + its API, Adobe Sign webhooks,
+  // and the finish swatch images the portal displays. /uploads (contracts, invoices) stays protected.
+  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/adobe-sign', '/swatches/'];
   app.use((req, res, next) => {
     if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
     const auth = req.headers.authorization;
