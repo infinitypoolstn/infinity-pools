@@ -87,7 +87,7 @@ function publicClientView(c) {
       dueDate: p.dueDate, completedAt: p.completedAt,
       amountDue: store.phaseAmount(c, p),
       paymentRequestedAt: p.paymentRequestedAt, paymentReceivedAt: p.paymentReceivedAt,
-      paymentLink: p.paymentLink || c.quickbooks.invoiceUrl || '',
+      paymentLink: p.paymentLink || c.quickbooks.payLink || '',
       clientSummary: (store.data.settings.phaseTemplate.find(t => t.key === p.key) || {}).clientSummary || '',
       clientLabel: (store.data.settings.phaseTemplate.find(t => t.key === p.key) || {}).clientLabel || p.name,
     })),
