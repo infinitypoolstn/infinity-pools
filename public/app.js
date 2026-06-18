@@ -51,7 +51,7 @@ async function route() {
   const badge = $('#alertBadge');
   badge.style.display = unread ? '' : 'none';
   badge.textContent = unread;
-  const views = { '': vDashboard, clients: vClients, client: () => vClient(id, tab), tasks: vTasks, employees: vEmployees, contractors: vContractors, design: vDesign, alerts: vAlerts, settings: vSettings };
+  const views = { '': vDashboard, clients: vClients, client: () => vClient(id, tab), tasks: vTasks, employees: vEmployees, contractors: vContractors, design: vDesign, alerts: vAlerts, settings: vSettings, eula: vEula, privacy: vPrivacy };
   (views[view || ''] || vDashboard)();
 }
 window.addEventListener('hashchange', route);
@@ -1235,6 +1235,86 @@ window.testEmail = async function () {
   try { const r = await api('POST', '/api/test-email', {}); toast(r.email.status === 'sent' ? 'Test email sent — check your inbox' : 'Not sent: ' + (r.email.error || r.email.status), r.email.status !== 'sent'); }
   catch (e) { toast(e.message, true); }
 };
+
+/* ============================== EULA ============================== */
+function vEula() {
+  $('#main').innerHTML = `
+    <div style="max-width:760px">
+      <h1>End User License Agreement</h1>
+      <p class="muted">Last Updated: May 4, 2026</p>
+      <div class="card">
+        <p>This End User License Agreement ("Agreement") is a legal agreement between you ("User") and Infinity Pools ("Company") governing your use of the Infinity Pools Build Manager application ("App"). By accessing or using the App, you agree to be bound by this Agreement.</p>
+
+        <h2>1. License Grant</h2>
+        <p>Subject to the terms of this Agreement, Infinity Pools grants you a limited, non-exclusive, non-transferable, revocable license to use the App solely for internal pool construction scheduling and job management activities.</p>
+
+        <h2>2. Restrictions</h2>
+        <p>You may not: copy, modify, or distribute the App; reverse engineer or attempt to extract the source code; rent, lease, or lend the App; use the App for any unlawful purpose; or remove any proprietary notices or labels.</p>
+
+        <h2>3. QuickBooks Integration</h2>
+        <p>The App may connect to QuickBooks Online via OAuth 2.0 to sync invoicing and customer data. This data is used solely for display and operational purposes within the App. You may revoke this access at any time through your QuickBooks account settings.</p>
+
+        <h2>4. Adobe Sign Integration</h2>
+        <p>The App may connect to Adobe Acrobat Sign to facilitate electronic contract signing. Documents transmitted through this integration are governed by Adobe's terms of service. Infinity Pools is not responsible for Adobe Sign's availability or performance.</p>
+
+        <h2>5. No Warranty</h2>
+        <p>THE APP IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND. INFINITY POOLS DOES NOT WARRANT THAT THE APP WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE.</p>
+
+        <h2>6. Limitation of Liability</h2>
+        <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, INFINITY POOLS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL DAMAGES, OR LOST PROFITS ARISING FROM YOUR USE OF THE APP.</p>
+
+        <h2>7. Termination</h2>
+        <p>Infinity Pools may terminate this Agreement and your access to the App at any time for non-compliance with these terms. Upon termination, you must immediately cease all use of the App.</p>
+
+        <h2>8. Governing Law</h2>
+        <p>This Agreement is governed by the laws of the State of Tennessee. Any disputes arising under this Agreement shall be resolved in the courts of Tennessee.</p>
+
+        <h2>9. Contact</h2>
+        <p>For questions regarding this Agreement, contact us at <a href="mailto:admin@infinitypoolstn.com">admin@infinitypoolstn.com</a>.</p>
+      </div>
+      <p style="margin-top:12px"><a href="#/" class="btn secondary">← Back to Dashboard</a></p>
+    </div>`;
+}
+
+/* ============================== Privacy Policy ============================== */
+function vPrivacy() {
+  $('#main').innerHTML = `
+    <div style="max-width:760px">
+      <h1>Privacy Policy</h1>
+      <p class="muted">Last Updated: May 4, 2026</p>
+      <div class="card">
+        <p>This Privacy Policy describes how Infinity Pools ("we," "us," or "our") collects, uses, and protects information when you use the Infinity Pools Build Manager application ("App").</p>
+
+        <h2>1. Information We Collect</h2>
+        <p>We collect information you provide directly, including client names, email addresses, project details, and job scheduling data. If you connect QuickBooks Online, we also access invoicing and customer data from that service.</p>
+
+        <h2>2. How We Use Your Information</h2>
+        <p>Information is used exclusively for internal scheduling, job management, and invoicing operations. We do not sell, share, or disclose your data to third parties for marketing or any other purpose.</p>
+
+        <h2>3. Data Storage &amp; Security</h2>
+        <p>Your data is stored in encrypted cloud storage and transmitted over HTTPS. Access is restricted to authorized personnel only. While we take reasonable precautions, no system is completely secure and we cannot guarantee absolute security.</p>
+
+        <h2>4. Data Retention</h2>
+        <p>Active project data is retained for the duration of use. Archived job records are retained for up to 7 years for record-keeping and legal compliance purposes.</p>
+
+        <h2>5. QuickBooks Integration</h2>
+        <p>When you authorize QuickBooks Online access, we retrieve invoicing and customer data via OAuth 2.0. This data is used solely for display within the App and is not stored beyond operational needs. You may disconnect QuickBooks at any time through your QuickBooks account settings.</p>
+
+        <h2>6. Your Rights</h2>
+        <p>You may request access to, correction of, or deletion of your data at any time by contacting us. You may also revoke any third-party integration permissions (QuickBooks, Adobe Sign) through those services directly.</p>
+
+        <h2>7. Third-Party Services</h2>
+        <p>The App integrates with Intuit QuickBooks and Adobe Acrobat Sign. These services have their own privacy policies that govern their data practices independently of this policy.</p>
+
+        <h2>8. Policy Updates</h2>
+        <p>We may update this Privacy Policy from time to time. Changes take effect upon posting. Continued use of the App after changes are posted constitutes acceptance of the updated policy.</p>
+
+        <h2>9. Contact</h2>
+        <p>For privacy questions or requests, contact us at <a href="mailto:admin@infinitypoolstn.com">admin@infinitypoolstn.com</a>.</p>
+      </div>
+      <p style="margin-top:12px"><a href="#/" class="btn secondary">← Back to Dashboard</a></p>
+    </div>`;
+}
 
 /* ============================== boot ============================== */
 window.toast = toast; window.closeModal = closeModal; window.api = api; window.reload = reload; window.route = route;
