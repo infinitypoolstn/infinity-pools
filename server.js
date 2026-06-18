@@ -29,7 +29,7 @@ const app = express();
 const APP_USER = process.env.APP_USER || '';
 const APP_PASS = process.env.APP_PASS || '';
 if (APP_USER && APP_PASS) {
-  const PUBLIC_PATHS = ['/portal/', '/api/portal/', '/api/webhooks/adobe-sign'];
+  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/adobe-sign'];
   app.use((req, res, next) => {
     if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
     const auth = req.headers.authorization;
@@ -41,6 +41,10 @@ if (APP_USER && APP_PASS) {
     res.status(401).send('Authentication required');
   });
 }
+
+// Unauthenticated health check for Render. Kept separate from /api/bootstrap so the
+// real (data-bearing) endpoint can stay behind Basic Auth.
+app.get('/healthz', (req, res) => res.json({ ok: true }));
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
