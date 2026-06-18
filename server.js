@@ -87,7 +87,7 @@ function publicClientView(c) {
       dueDate: p.dueDate, completedAt: p.completedAt,
       amountDue: store.phaseAmount(c, p),
       paymentRequestedAt: p.paymentRequestedAt, paymentReceivedAt: p.paymentReceivedAt,
-      paymentLink: p.paymentLink || c.quickbooks.payLink || '',
+      paymentLink: p.paymentLink || p.payLink || '',
       clientSummary: (store.data.settings.phaseTemplate.find(t => t.key === p.key) || {}).clientSummary || '',
       clientLabel: (store.data.settings.phaseTemplate.find(t => t.key === p.key) || {}).clientLabel || p.name,
     })),
@@ -268,8 +268,8 @@ app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
 
   let qb = null, qbError = null;
   if (quickbooks.connected()) {
-    try { qb = await quickbooks.createContractInvoice(c, store.quoteTotal(c)); }
-    catch (e) { qbError = e.message; store.addAlert('QuickBooks invoice creation failed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
+    try { qb = await quickbooks.createContractEstimate(c, store.quoteTotal(c)); }
+    catch (e) { qbError = e.message; store.addAlert('QuickBooks estimate creation failed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
   }
 
   store.addAlert(`🎉 Contract SIGNED (${method}${depositMethod ? ', deposit by ' + depositMethod : ''}): ${c.name} — ${c.address}. Design phase started.`, { clientId: c.id, type: 'phase' });
@@ -323,8 +323,8 @@ async function processAdobeSigning(c, agreementId) {
   }
   let qbError = null;
   if (quickbooks.connected()) {
-    try { await quickbooks.createContractInvoice(c, store.quoteTotal(c)); }
-    catch (e) { qbError = e.message; store.addAlert('QuickBooks invoice creation failed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
+    try { await quickbooks.createContractEstimate(c, store.quoteTotal(c)); }
+    catch (e) { qbError = e.message; store.addAlert('QuickBooks estimate creation failed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
   }
   store.addAlert(`🎉 Contract SIGNED via Adobe Sign: ${c.name} — ${c.address}. Design phase started.${finish ? ' Finish: ' + finish : ''}`, { clientId: c.id, type: 'phase' });
   if (c.email && design.drawPct > 0) await alerts.sendPaymentRequest(c, design);
@@ -420,13 +420,13 @@ app.post('/api/settings/quickbooks/test', wrap(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// Manually create QB customer + contract invoice when auto-creation failed at signing.
+// Manually create QB customer + master estimate when auto-creation failed at signing.
 app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
   if (!c.contract.signedAt) return res.status(400).json({ error: 'Contract has not been signed yet.' });
   if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
-  if (c.quickbooks.invoiceId) return res.status(400).json({ error: 'A QuickBooks invoice already exists for this client.' });
-  await quickbooks.createContractInvoice(c, store.quoteTotal(c));
+  if (c.quickbooks.estimateId) return res.status(400).json({ error: 'A QuickBooks estimate already exists for this client.' });
+  await quickbooks.createContractEstimate(c, store.quoteTotal(c));
   store.save();
   res.json({ client: c });
 }));
