@@ -1142,6 +1142,10 @@ function vSettings() {
         <label class="fld grow">Card fee note (shown to client)<input type="text" id="qbCc" value="${esc(st.quickbooks.ccFeeNote)}"></label>
       </div>
       <label class="check"><input type="checkbox" id="qbPass" ${st.quickbooks.passFeesToClient ? 'checked' : ''}> Show processing-fee notes on payment request emails</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn secondary small" onclick="testQuickBooks()">Test Connection</button>
+        <span class="muted" style="font-size:12px;align-self:center">Saves settings, then verifies the token with Intuit. Your token is not cleared if the test fails.</span>
+      </div>
     </div>
     <div class="card" style="max-width:760px">
       <h2>Adobe Acrobat Sign ${S.adobeSignConfigured ? '<span class="chip active">configured</span>' : '<span class="chip prospect">not configured</span>'}</h2>
@@ -1255,6 +1259,14 @@ window.testAdobeSign = async function () {
   try {
     const r = await api('POST', '/api/settings/adobe-sign/test');
     toast('Adobe Sign connected ✓' + (r.apiAccessPoint ? ' · API: ' + r.apiAccessPoint : ''));
+  } catch (e) { toast(e.message, true); }
+};
+window.testQuickBooks = async function () {
+  await settingsSave();
+  try {
+    const r = await api('POST', '/api/settings/quickbooks/test');
+    if (r.ok) toast('QuickBooks connected ✓' + (r.companyName ? ' · ' + r.companyName : ''));
+    else toast(r.error, true);
   } catch (e) { toast(e.message, true); }
 };
 window.registerAdobeWebhook = async function () {

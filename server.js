@@ -412,6 +412,11 @@ app.post('/api/settings/adobe-sign/register-webhook', wrap(async (req, res) => {
   res.json({ ok: true, webhookUrl, result });
 }));
 
+// Validate QuickBooks credentials without clearing the token on failure.
+app.post('/api/settings/quickbooks/test', wrap(async (req, res) => {
+  res.json(await quickbooks.testConnection());
+}));
+
 // ---------------------------------------------------------------------------
 // Manually create QB customer + contract invoice when auto-creation failed at signing.
 app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => {
