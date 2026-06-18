@@ -4,6 +4,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const cron = require('node-cron');
 
 const store = require('./lib/store');
@@ -22,6 +23,25 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 store.load();
 
 const app = express();
+
+// Basic Auth — protects all routes except the client portal and Adobe Sign webhooks.
+// Set APP_USER and APP_PASS environment variables. Defaults allow local dev without credentials.
+const APP_USER = process.env.APP_USER || '';
+const APP_PASS = process.env.APP_PASS || '';
+if (APP_USER && APP_PASS) {
+  const PUBLIC_PATHS = ['/portal/', '/api/portal/', '/api/webhooks/adobe-sign'];
+  app.use((req, res, next) => {
+    if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
+    const auth = req.headers.authorization;
+    if (auth && auth.startsWith('Basic ')) {
+      const [user, pass] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
+      if (user === APP_USER && pass === APP_PASS) return next();
+    }
+    res.set('WWW-Authenticate', 'Basic realm="Infinity Pools"');
+    res.status(401).send('Authentication required');
+  });
+}
+
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOADS_DIR));
@@ -46,6 +66,7 @@ const getClient = (req, res) => {
 
 const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
   console.error(e);
+  store.addError(req.method, req.path, e.message, e.stack);
   res.status(500).json({ error: e.message });
 });
 
@@ -101,6 +122,7 @@ app.get('/api/bootstrap', (req, res) => {
     finishes: d.finishes,
     pebbleCheck: d.pebbleCheck,
     outbox: d.outbox.slice(0, 50),
+    errorLog: (d.errorLog || []).slice(0, 100),
     gmailConfigured: mailer.configured(),
     quickbooksConnected: quickbooks.connected(),
     adobeSignConfigured: adobeSign.configured(store.data.settings),
@@ -387,6 +409,17 @@ app.post('/api/settings/adobe-sign/register-webhook', wrap(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
+// Manually create QB customer + contract invoice when auto-creation failed at signing.
+app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  if (!c.contract.signedAt) return res.status(400).json({ error: 'Contract has not been signed yet.' });
+  if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
+  if (c.quickbooks.invoiceId) return res.status(400).json({ error: 'A QuickBooks invoice already exists for this client.' });
+  await quickbooks.createContractInvoice(c, store.quoteTotal(c));
+  store.save();
+  res.json({ client: c });
+}));
+
 // Change orders
 // ---------------------------------------------------------------------------
 app.post('/api/clients/:id/change-orders', wrap(async (req, res) => {
@@ -568,6 +601,11 @@ app.post('/api/alerts/read', (req, res) => {
   store.save(); res.json({ ok: true });
 });
 
+app.delete('/api/error-log', (req, res) => {
+  store.data.errorLog = [];
+  store.save(); res.json({ ok: true });
+});
+
 app.put('/api/finishes/:id', (req, res) => {
   const f = store.data.finishes.find(f => f.id === req.params.id);
   if (!f) return res.status(404).json({ error: 'Not found' });
@@ -624,13 +662,40 @@ app.post('/api/clients/:id/portal/send-link', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---------------------------------------------------------------------------
+// Client portal — email verification sessions (in-memory, 7-day expiry)
+// ---------------------------------------------------------------------------
+const portalSessions = new Map(); // sessionId → { portalToken, expires }
+function prunePortalSessions() {
+  const now = Date.now();
+  for (const [id, s] of portalSessions) if (s.expires < now) portalSessions.delete(id);
+}
+
 app.get('/portal/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'portal.html'));
+});
+
+app.post('/api/portal/:token/verify', (req, res) => {
+  const c = store.data.clients.find(c => c.portalToken === req.params.token);
+  if (!c) return res.status(404).json({ error: 'Project not found' });
+  const submitted = String(req.body.email || '').trim().toLowerCase();
+  if (!submitted || submitted !== (c.email || '').trim().toLowerCase()) {
+    return res.status(401).json({ error: 'Email address not recognized for this project. Please double-check and try again.' });
+  }
+  prunePortalSessions();
+  const sessionId = crypto.randomBytes(32).toString('hex');
+  portalSessions.set(sessionId, { portalToken: req.params.token, expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+  res.json({ sessionId });
 });
 
 app.get('/api/portal/:token', (req, res) => {
   const c = store.data.clients.find(c => c.portalToken === req.params.token);
   if (!c) return res.status(404).json({ error: 'Project not found' });
+  const sessionId = req.headers['x-portal-session'];
+  const session = sessionId && portalSessions.get(sessionId);
+  if (!session || session.portalToken !== req.params.token || session.expires < Date.now()) {
+    return res.status(401).json({ error: 'verify' });
+  }
   res.json(publicClientView(c));
 });
 

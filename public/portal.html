@@ -66,6 +66,20 @@
 
   svg .raise { transition:all 1s ease; }
   footer { text-align:center; margin-top:28px; color:var(--mid); font-size:12.5px; }
+
+  /* email gate */
+  .gate { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .gate-card { background:#fff; border-radius:20px; box-shadow:0 8px 40px rgba(10,94,168,.15); padding:40px 36px; max-width:420px; width:100%; text-align:center; }
+  .gate-card .inf { font-size:48px; line-height:1; margin-bottom:8px; }
+  .gate-card h1 { margin:0 0 6px; color:var(--blue-dark); font-size:22px; }
+  .gate-card .sub { color:var(--mid); font-size:14px; margin-bottom:28px; }
+  .gate-card input[type=email] { width:100%; padding:13px 16px; border:1.5px solid #c8ddef; border-radius:10px; font-size:15px; font-family:inherit; color:var(--ink); outline:none; box-sizing:border-box; }
+  .gate-card input[type=email]:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(10,94,168,.12); }
+  .gate-card button { margin-top:14px; width:100%; padding:14px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .gate-card button:hover { background:var(--blue-dark); }
+  .gate-card button:disabled { opacity:.6; cursor:default; }
+  .gate-error { color:#c0392b; font-size:13px; margin-top:10px; min-height:18px; }
+  .gate-card .note { color:var(--mid); font-size:12px; margin-top:18px; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -141,15 +155,55 @@ function poolSvg(stage, finishColor) {
 
 const ICONS = ['📐','🚧','🚜','🔩','🏗️','🎨','🏊'];
 
-(async function init() {
-  const token = location.pathname.split('/').pop();
+const token = location.pathname.split('/').pop();
+const SESSION_KEY = 'portalSession_' + token;
+
+function showEmailGate(errorMsg) {
+  document.body.innerHTML = `
+    <div class="gate">
+      <div class="gate-card">
+        <div class="inf">∞</div>
+        <h1>Infinity Pools</h1>
+        <p class="sub">Enter the email address on your project to view your portal.</p>
+        <input type="email" id="gateEmail" placeholder="your@email.com" autocomplete="email">
+        <button id="gateBtn" onclick="verifyEmail()">View My Project →</button>
+        <div class="gate-error" id="gateErr">${errorMsg || ''}</div>
+        <p class="note">🔒 Your email is only used to confirm your identity — it is never shared or used for marketing.</p>
+      </div>
+    </div>`;
+  const inp = document.getElementById('gateEmail');
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') verifyEmail(); });
+  inp.focus();
+}
+
+window.verifyEmail = async function () {
+  const email = document.getElementById('gateEmail').value.trim();
+  const btn = document.getElementById('gateBtn');
+  const err = document.getElementById('gateErr');
+  if (!email) { err.textContent = 'Please enter your email address.'; return; }
+  btn.disabled = true; btn.textContent = 'Verifying…'; err.textContent = '';
+  try {
+    const r = await fetch('/api/portal/' + token + '/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await r.json();
+    if (!r.ok) { err.textContent = data.error || 'Verification failed.'; btn.disabled = false; btn.textContent = 'View My Project →'; return; }
+    localStorage.setItem(SESSION_KEY, data.sessionId);
+    loadPortal(data.sessionId);
+  } catch (e) { err.textContent = 'Network error — please try again.'; btn.disabled = false; btn.textContent = 'View My Project →'; }
+};
+
+async function loadPortal(sessionId) {
+  document.body.innerHTML = '<div class="wrap" id="wrap">Loading your project…</div>';
   let d;
   try {
-    const res = await fetch('/api/portal/' + token);
+    const res = await fetch('/api/portal/' + token, { headers: { 'x-portal-session': sessionId } });
+    if (res.status === 401) { localStorage.removeItem(SESSION_KEY); showEmailGate(); return; }
     if (!res.ok) throw new Error();
     d = await res.json();
   } catch (e) {
-    $('#wrap').innerHTML = '<div class="card"><h2>Project not found</h2><p class="muted">Please check your link or contact Infinity Pools.</p></div>';
+    document.getElementById('wrap').innerHTML = '<div class="card"><h2>Project not found</h2><p class="muted">Please check your link or contact Infinity Pools.</p></div>';
     return;
   }
   const phases = d.phases;
@@ -221,6 +275,12 @@ const ICONS = ['📐','🚧','🚜','🔩','🏗️','🎨','🏊'];
     </div>` : ''}
 
     <footer>Infinity Pools · Questions? Just reply to any of our emails — we're happy to help.</footer>`;
+}
+
+// Entry point — check for existing session, otherwise show email gate
+(function init() {
+  const sessionId = localStorage.getItem(SESSION_KEY);
+  if (sessionId) { loadPortal(sessionId); } else { showEmailGate(); }
 })();
 </script>
 </body>

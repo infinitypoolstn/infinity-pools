@@ -521,8 +521,13 @@ function tContract(c) {
       </div>
       <div class="card grow" style="min-width:300px;max-width:430px">
         <h2>QuickBooks</h2>
-        ${S.quickbooksConnected ? '<p class="chip active">Connected</p>' : '<p class="muted">Not connected — payment links can still be pasted per phase below. Connect in <a href="#/settings">Settings</a>.</p>'}
-        ${c.quickbooks.invoiceUrl ? `<p>Invoice: <a href="${c.quickbooks.invoiceUrl}" target="_blank">open in QuickBooks</a></p>` : ''}
+        ${S.quickbooksConnected ? '<span class="chip active">Connected</span>' : '<p class="muted">Not connected — payment links can still be pasted per phase below. Connect in <a href="#/settings">Settings</a>.</p>'}
+        ${c.quickbooks.invoiceUrl
+          ? `<p style="margin-top:10px">Invoice: <a href="${c.quickbooks.invoiceUrl}" target="_blank">open in QuickBooks ↗</a></p>`
+          : S.quickbooksConnected && c.contract.signedAt
+            ? `<div class="banner warn" style="margin-top:10px">Invoice was not created — this usually means the QuickBooks connection needs attention.</div>
+               <button class="btn" style="margin-top:10px" onclick="createQbInvoice('${c.id}')">Create QB Customer &amp; Invoice</button>`
+            : ''}
       </div>
     </div>
     <div class="card">
@@ -559,6 +564,14 @@ window.markSigned = async function (id) {
     const r = await api('POST', `/api/clients/${id}/contract/mark-signed`, { method: $('#signMethod').value, depositMethod: $('#depMethod').value || null });
     await reload(); route();
     toast('Contract signed — Design phase started' + (r.quickbooksError ? ' (QuickBooks error: ' + r.quickbooksError + ')' : ''));
+  } catch (e) { toast(e.message, true); }
+};
+window.createQbInvoice = async function (id) {
+  if (!confirm('Create QuickBooks customer and invoice now?')) return;
+  try {
+    await api('POST', `/api/clients/${id}/quickbooks/create-invoice`);
+    await reload(); route();
+    toast('QuickBooks customer and invoice created successfully');
   } catch (e) { toast(e.message, true); }
 };
 window.sendViaAdobeSign = async function (id) {
@@ -1063,8 +1076,29 @@ async function vAlerts() {
       ${S.outbox.map(o => `<tr><td class="muted" style="white-space:nowrap">${ago(o.createdAt)}</td><td>${esc(o.to)}</td><td>${esc(o.subject)}</td>
         <td>${o.status === 'sent' ? '<span class="chip active">sent</span>' : `<span class="chip prospect" title="${esc(o.error || '')}">${esc(o.status)}</span>`}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No emails yet.</td></tr>'}
       </tbody></table>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h2 style="margin:0">Error Log</h2>
+        ${(S.errorLog || []).length ? `<button class="btn danger small" onclick="clearErrorLog()">Clear Log</button>` : ''}
+      </div>
+      ${(S.errorLog || []).length ? `
+      <table class="tbl"><thead><tr><th>When</th><th>Method</th><th>Path</th><th>Error</th></tr></thead><tbody>
+      ${(S.errorLog).map(e => `<tr>
+        <td class="muted" style="white-space:nowrap">${ago(e.createdAt)}</td>
+        <td><span class="chip phase">${esc(e.method)}</span></td>
+        <td class="muted">${esc(e.path)}</td>
+        <td style="font-size:13px">${esc(e.message)}${e.stack ? `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--mid);font-size:11px">stack trace</summary><pre style="font-size:10px;overflow:auto;max-height:120px;margin:4px 0 0">${esc(e.stack)}</pre></details>` : ''}</td>
+      </tr>`).join('')}
+      </tbody></table>` : '<p class="muted">No errors logged — all systems running cleanly.</p>'}
     </div>`;
 }
+window.clearErrorLog = async function () {
+  if (!confirm('Clear all error log entries?')) return;
+  await api('DELETE', '/api/error-log');
+  await reload(); route();
+  toast('Error log cleared');
+};
 
 /* ============================== SETTINGS ============================== */
 function vSettings() {
