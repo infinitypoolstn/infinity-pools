@@ -294,17 +294,27 @@ function tScope(c) {
     <div class="banner info">Pre-populated from your standard contract. General descriptions only — sizes and dollar values live in Pool Specs and Finance. ${c.specsLocked ? 'Contract is signed: log substantive changes as Change Orders.' : 'Editable until the contract is signed.'}</div>
     ${c.scope.map((sec, i) => `
       <div class="card">
-        <h2>${esc(sec.title)}</h2>
+        <div class="row" style="align-items:center;margin-bottom:8px">
+          <input class="input grow scope-title" data-scopetitle="${i}" value="${esc(sec.title)}" style="font-size:18px;font-weight:700">
+          <button class="btn danger small" onclick="scopeSecDel('${c.id}',${i})">Delete Section</button>
+        </div>
         ${sec.items.map((it, j) => `<div class="row" style="align-items:center;margin-bottom:6px">
           <input class="input grow" data-scope="${i}:${j}" value="${esc(it)}">
           <button class="btn danger small" onclick="scopeDel('${c.id}',${i},${j})">✕</button></div>`).join('')}
         <button class="btn secondary small" onclick="scopeAdd('${c.id}',${i})">＋ Add line</button>
       </div>`).join('')}
-    <button class="btn" onclick="scopeSave('${c.id}')">💾 Save Scope of Work</button>`;
+    <div class="row" style="gap:10px">
+      <button class="btn secondary" onclick="scopeSecAdd('${c.id}')">＋ Add Section</button>
+      <button class="btn" onclick="scopeSave('${c.id}')">💾 Save Scope of Work</button>
+    </div>`;
 }
 window.scopeSave = async function (id, thenRoute = true) {
   const c = client(id);
   const scope = JSON.parse(JSON.stringify(c.scope));
+  document.querySelectorAll('[data-scopetitle]').forEach(inp => {
+    const i = Number(inp.dataset.scopetitle);
+    if (scope[i]) scope[i].title = inp.value;
+  });
   document.querySelectorAll('[data-scope]').forEach(inp => {
     const [i, j] = inp.dataset.scope.split(':').map(Number);
     scope[i].items[j] = inp.value;
@@ -314,6 +324,19 @@ window.scopeSave = async function (id, thenRoute = true) {
 };
 window.scopeAdd = async function (id, i) { await scopeSave(id, false); const c = client(id); c.scope[i].items.push(''); await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route(); };
 window.scopeDel = async function (id, i, j) { await scopeSave(id, false); const c = client(id); c.scope[i].items.splice(j, 1); await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route(); };
+window.scopeSecAdd = async function (id) {
+  await scopeSave(id, false);
+  const c = client(id);
+  c.scope.push({ key: 'custom_' + Date.now().toString(36), title: 'New Section', items: [''] });
+  await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route();
+};
+window.scopeSecDel = async function (id, i) {
+  if (!confirm('Delete this scope section and all its lines?')) return;
+  await scopeSave(id, false);
+  const c = client(id);
+  c.scope.splice(i, 1);
+  await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route();
+};
 
 /* ---------- Design tab ---------- */
 function tDesign(c) {
@@ -1186,6 +1209,7 @@ function vSettings() {
     <div class="card" style="max-width:860px">
       <h2>Automatic Phase Task Workflows</h2>
       <p class="muted">When a phase begins (or the contract is signed, for Design), these tasks are created automatically with due dates counted from the phase start. Assign a default owner per task — they'll get an email listing their new tasks the moment the phase kicks off.</p>
+      <div id="ttWorkflows">
       ${S.settings.phaseTemplate.map(ph => `
         <h3 style="color:var(--blue-dark)">${esc(ph.name)}</h3>
         <div data-ttphase="${ph.key}">
@@ -1200,6 +1224,9 @@ function vSettings() {
           </div>`).join('')}
         </div>
         <button class="btn secondary small" style="margin-bottom:10px" onclick="ttAdd('${ph.key}')">＋ Add task to ${esc(ph.name)}</button>`).join('')}
+      </div>
+      <button class="btn secondary" onclick="ttAddPhase()">＋ Add Phase Section</button>
+      <p class="muted" style="font-size:12px;margin-top:6px">New phase sections are added to your standard phase list at a 0% draw (no change to the payment schedule) and apply to newly created projects.</p>
     </div>
     <div class="card" style="max-width:860px">
       <h2>Disclosures, Exclusions & Site Conditions (universal — applies to ALL contracts)</h2>
@@ -1239,20 +1266,39 @@ window.ttAdd = function (phaseKey) {
       <button class="btn danger small" onclick="this.closest('[data-ttrow]').remove()">✕</button>
     </div>`);
 };
+window.ttAddPhase = function () {
+  const key = 'custom_' + Date.now().toString(36);
+  $('#ttWorkflows').insertAdjacentHTML('beforeend', `
+    <h3 style="color:var(--blue-dark)">＋ New Phase</h3>
+    <div data-ttphase="${key}" data-newphase="1">
+      <input class="input tt-phasename" placeholder="Phase name (e.g. Permitting, Warranty)" style="font-weight:700;max-width:320px;margin-bottom:8px">
+    </div>
+    <button class="btn secondary small" style="margin-bottom:10px" onclick="ttAdd('${key}')">＋ Add task</button>`);
+};
 window.settingsSave = async function () {
   const disclosures = [...document.querySelectorAll('[data-disc]')].map(d => ({
     title: d.querySelector('.disc-title').value, body: d.querySelector('.disc-body').value,
   })).filter(d => d.title.trim());
   const taskTemplates = {};
+  const existingPhase = Object.fromEntries((S.settings.phaseTemplate || []).map(p => [p.key, p]));
+  const phaseTemplate = [];
   document.querySelectorAll('[data-ttphase]').forEach(ph => {
-    taskTemplates[ph.dataset.ttphase] = [...ph.querySelectorAll('[data-ttrow]')].map(r => ({
+    const key = ph.dataset.ttphase;
+    taskTemplates[key] = [...ph.querySelectorAll('[data-ttrow]')].map(r => ({
       title: r.querySelector('.tt-title').value,
       employeeId: r.querySelector('.tt-emp').value || null,
       dueOffsetDays: Number(r.querySelector('.tt-off').value) || 0,
     })).filter(t => t.title.trim());
+    if (ph.dataset.newphase) {
+      const name = (ph.querySelector('.tt-phasename')?.value || '').trim() || 'New Phase';
+      phaseTemplate.push({ key, name, drawPct: 0, time: '', clientSummary: '', clientLabel: name });
+    } else if (existingPhase[key]) {
+      phaseTemplate.push(existingPhase[key]);
+    }
   });
   await api('PUT', '/api/settings', {
     taskTemplates,
+    phaseTemplate,
     companyName: $('#stName').value, companyEmail: $('#stEmail').value,
     companyPhone: $('#stPhone').value, companyAddress: $('#stAddr').value,
     gmail: { user: $('#stGUser').value.trim(), appPassword: $('#stGPass').value.trim() },
