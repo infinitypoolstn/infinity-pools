@@ -1207,6 +1207,26 @@ function vSettings() {
       </div>
     </div>
     <div class="card" style="max-width:860px">
+      <h2>Scope of Work (master template)</h2>
+      <p class="muted">The default Scope of Work copied into every new project's contract. You can still edit any individual client's scope on their <b>Scope of Work</b> tab without changing this master.</p>
+      <div id="scopeMaster">
+      ${(st.scopeTemplate || []).map(sec => `
+        <div class="card" style="background:var(--blue-pale)" data-scopesec data-key="${esc(sec.key || '')}">
+          <div class="row" style="align-items:center">
+            <input class="input grow sm-title" value="${esc(sec.title)}" style="font-weight:700">
+            <button class="btn danger small" onclick="this.closest('[data-scopesec]').remove()">Delete Section</button>
+          </div>
+          <div class="sm-items" style="margin-top:8px">
+          ${(sec.items || []).map(it => `<div class="row" style="align-items:center;margin-bottom:6px">
+            <input class="input grow sm-item" value="${esc(it)}">
+            <button class="btn danger small" onclick="this.closest('.row').remove()">✕</button></div>`).join('')}
+          </div>
+          <button class="btn secondary small" onclick="smAddLine(this)">＋ Add line</button>
+        </div>`).join('')}
+      </div>
+      <button class="btn secondary" onclick="smAddSection()">＋ Add Section</button>
+    </div>
+    <div class="card" style="max-width:860px">
       <h2>Automatic Phase Task Workflows</h2>
       <p class="muted">When a phase begins (or the contract is signed, for Design), these tasks are created automatically with due dates counted from the phase start. Assign a default owner per task — they'll get an email listing their new tasks the moment the phase kicks off.</p>
       <div id="ttWorkflows">
@@ -1266,6 +1286,26 @@ window.ttAdd = function (phaseKey) {
       <button class="btn danger small" onclick="this.closest('[data-ttrow]').remove()">✕</button>
     </div>`);
 };
+window.smAddLine = function (btn) {
+  btn.previousElementSibling.insertAdjacentHTML('beforeend', `
+    <div class="row" style="align-items:center;margin-bottom:6px">
+      <input class="input grow sm-item" value="">
+      <button class="btn danger small" onclick="this.closest('.row').remove()">✕</button></div>`);
+};
+window.smAddSection = function () {
+  const key = 'custom_' + Date.now().toString(36);
+  $('#scopeMaster').insertAdjacentHTML('beforeend', `
+    <div class="card" style="background:var(--blue-pale)" data-scopesec data-key="${key}">
+      <div class="row" style="align-items:center">
+        <input class="input grow sm-title" placeholder="Section title" style="font-weight:700">
+        <button class="btn danger small" onclick="this.closest('[data-scopesec]').remove()">Delete Section</button>
+      </div>
+      <div class="sm-items" style="margin-top:8px">
+        <div class="row" style="align-items:center;margin-bottom:6px"><input class="input grow sm-item" value=""><button class="btn danger small" onclick="this.closest('.row').remove()">✕</button></div>
+      </div>
+      <button class="btn secondary small" onclick="smAddLine(this)">＋ Add line</button>
+    </div>`);
+};
 window.ttAddPhase = function () {
   const key = 'custom_' + Date.now().toString(36);
   $('#ttWorkflows').insertAdjacentHTML('beforeend', `
@@ -1296,9 +1336,15 @@ window.settingsSave = async function () {
       phaseTemplate.push(existingPhase[key]);
     }
   });
+  const scopeTemplate = [...document.querySelectorAll('[data-scopesec]')].map(sec => ({
+    key: sec.dataset.key || ('custom_' + Math.random().toString(36).slice(2, 8)),
+    title: sec.querySelector('.sm-title').value,
+    items: [...sec.querySelectorAll('.sm-item')].map(i => i.value).filter(v => v.trim()),
+  })).filter(s => s.title.trim());
   await api('PUT', '/api/settings', {
     taskTemplates,
     phaseTemplate,
+    scopeTemplate,
     companyName: $('#stName').value, companyEmail: $('#stEmail').value,
     companyPhone: $('#stPhone').value, companyAddress: $('#stAddr').value,
     gmail: { user: $('#stGUser').value.trim(), appPassword: $('#stGPass').value.trim() },
