@@ -252,6 +252,7 @@ function tSpecs(c) {
     ${featRow('ledgeSeating', 'Ledge / Seating', true)}
     ${featRow('waterFeature', 'Water Feature')}
     ${featRow('fireFeature', 'Fire Feature')}
+    ${featRow('coldPlunge', 'Cold Plunge')}
     <div class="card">
       <div class="row">
         <label class="fld grow">Number of jets<input type="text" id="sp_jets" value="${esc(s.jets)}" ${dis}></label>
@@ -284,7 +285,7 @@ window.saveSpecs = async function (id) {
   const specs = {
     shape: $('#sp_shape').value, sizeDetails: $('#sp_size').value,
     hotTub: g('hotTub'), sunShelf: g('sunShelf'), spillover: g('spillover'),
-    ledgeSeating: g('ledgeSeating', true), waterFeature: g('waterFeature'), fireFeature: g('fireFeature'),
+    ledgeSeating: g('ledgeSeating', true), waterFeature: g('waterFeature'), fireFeature: g('fireFeature'), coldPlunge: g('coldPlunge'),
     jets: $('#sp_jets').value, ledLights: $('#sp_led').value, equipmentPad: $('#sp_pad').value,
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value })).filter(a => a.label.trim()),
   };
