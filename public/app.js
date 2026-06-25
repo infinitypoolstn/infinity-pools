@@ -226,7 +226,7 @@ window.startOverProject = async function (id) {
 function tSpecs(c) {
   const s = c.specs, dis = c.specsLocked ? 'disabled' : '';
   const pb = s.poolBase || {}, spa = s.spaBase || {}, wf = s.waterFeature || {}, cp = s.coldPlunge || {}, ff = s.fireFeature || {};
-  const ss = pb.sunShelf || {}, ls = pb.ledgeSeating || {};
+  const ss = pb.sunShelf || {}, ls = pb.ledgeSeating || {}, sp = pb.spillover || {};
   // live running total of every priced section that's included
   const initial = (Number(pb.price) || 0)
     + (spa.included ? (Number(spa.price) || 0) : 0)
@@ -265,7 +265,6 @@ function tSpecs(c) {
       <div class="row">
         <label class="fld grow">Size<input type="text" id="pb_size" value="${esc(pb.size)}" ${dis}></label>
         <label class="fld grow">Depth<input type="text" id="pb_depth" value="${esc(pb.depth)}" ${dis}></label>
-        <label class="fld grow">Shape<input type="text" id="pb_shapeText" value="${esc(pb.shapeText)}" ${dis}></label>
       </div>
       <div class="row">
         <label class="fld grow">Number of Jets<input type="text" id="pb_jets" value="${esc(pb.jets)}" ${dis}></label>
@@ -275,7 +274,10 @@ function tSpecs(c) {
         <label class="check"><input type="checkbox" id="pb_sunshelf_inc" ${ss.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_sunshelf_wrap').style.display=this.checked?'':'none'"> Sun Shelf</label>
         <div id="pb_sunshelf_wrap" class="row" style="${ss.included ? '' : 'display:none'}"><label class="fld grow">Sun Shelf details<input type="text" id="pb_sunshelf_det" value="${esc(ss.details)}" ${dis}></label></div>
       </div>
-      <div class="row"><label class="fld grow">Spillover<input type="text" id="pb_spillover" value="${esc(pb.spillover)}" ${dis}></label></div>
+      <div style="margin-top:6px">
+        <label class="check"><input type="checkbox" id="pb_spillover_inc" ${sp.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_spillover_wrap').style.display=this.checked?'':'none'"> Spillover</label>
+        <div id="pb_spillover_wrap" class="row" style="${sp.included ? '' : 'display:none'}"><label class="fld grow">Spillover details<input type="text" id="pb_spillover_det" value="${esc(sp.details)}" ${dis}></label></div>
+      </div>
       <div style="margin-top:6px">
         <label class="check"><input type="checkbox" id="pb_ledge_inc" ${ls.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_ledge_wrap').style.display=this.checked?'':'none'"> Ledge / Seating</label>
         <div id="pb_ledge_wrap" class="row" style="${ls.included ? '' : 'display:none'}"><label class="fld grow">Ledge / Seating details<input type="text" id="pb_ledge_det" value="${esc(ls.details)}" ${dis}></label></div>
@@ -335,10 +337,10 @@ window.saveSpecs = async function (id) {
   const specs = {
     poolBase: {
       price: num('pb_price'), shape: val('pb_shape'), freeform: val('pb_freeform'),
-      size: val('pb_size'), depth: val('pb_depth'), shapeText: val('pb_shapeText'),
+      size: val('pb_size'), depth: val('pb_depth'),
       jets: val('pb_jets'), ledLights: val('pb_led'),
       sunShelf: { included: chk('pb_sunshelf_inc'), details: val('pb_sunshelf_det') },
-      spillover: val('pb_spillover'),
+      spillover: { included: chk('pb_spillover_inc'), details: val('pb_spillover_det') },
       ledgeSeating: { included: chk('pb_ledge_inc'), details: val('pb_ledge_det') },
     },
     spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led') },
