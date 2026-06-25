@@ -225,14 +225,17 @@ window.startOverProject = async function (id) {
 /* ---------- Specs tab ---------- */
 function tSpecs(c) {
   const s = c.specs, dis = c.specsLocked ? 'disabled' : '';
-  const featRow = (key, label, hasStyle = false) => `
+  const featRow = (key, label, hasStyle = false) => {
+    const f = s[key] || {};
+    return `
     <div class="card" style="padding:14px 18px;margin-bottom:10px">
-      <label class="check"><input type="checkbox" id="sp_${key}_inc" ${s[key].included ? 'checked' : ''} ${dis}> Include ${label}</label>
+      <label class="check"><input type="checkbox" id="sp_${key}_inc" ${f.included ? 'checked' : ''} ${dis}> Include ${label}</label>
       <div class="row">
-        ${hasStyle ? `<label class="fld grow" style="max-width:220px">Style<select id="sp_${key}_style" ${dis}>${S.settings.ledgeStyles.map(o => `<option ${s[key].style === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>` : ''}
-        <label class="fld grow">Size & details<input type="text" id="sp_${key}_det" value="${esc(s[key].details)}" ${dis} placeholder="e.g. 5' x 15', 12&quot; depth"></label>
+        ${hasStyle ? `<label class="fld grow" style="max-width:220px">Style<select id="sp_${key}_style" ${dis}>${S.settings.ledgeStyles.map(o => `<option ${f.style === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>` : ''}
+        <label class="fld grow">Size & details<input type="text" id="sp_${key}_det" value="${esc(f.details || '')}" ${dis} placeholder="e.g. 5' x 15', 12&quot; depth"></label>
       </div>
     </div>`;
+  };
   $('#tabBody').innerHTML = `
     <div class="card">
       <h2>Pool Size & Shape</h2>
@@ -248,6 +251,7 @@ function tSpecs(c) {
     ${featRow('spillover', 'Spillover')}
     ${featRow('ledgeSeating', 'Ledge / Seating', true)}
     ${featRow('waterFeature', 'Water Feature')}
+    ${featRow('fireFeature', 'Fire Feature')}
     <div class="card">
       <div class="row">
         <label class="fld grow">Number of jets<input type="text" id="sp_jets" value="${esc(s.jets)}" ${dis}></label>
@@ -280,7 +284,7 @@ window.saveSpecs = async function (id) {
   const specs = {
     shape: $('#sp_shape').value, sizeDetails: $('#sp_size').value,
     hotTub: g('hotTub'), sunShelf: g('sunShelf'), spillover: g('spillover'),
-    ledgeSeating: g('ledgeSeating', true), waterFeature: g('waterFeature'),
+    ledgeSeating: g('ledgeSeating', true), waterFeature: g('waterFeature'), fireFeature: g('fireFeature'),
     jets: $('#sp_jets').value, ledLights: $('#sp_led').value, equipmentPad: $('#sp_pad').value,
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value })).filter(a => a.label.trim()),
   };
