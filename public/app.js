@@ -291,7 +291,7 @@ function tSpecs(c) {
         <label class="fld grow">Number of Jets<input type="text" id="spa_jets" value="${esc(spa.jets)}" ${dis}></label>
         <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="spa_led" value="${esc(spa.ledLights)}" ${dis}></label>
       </div>
-      <div class="row"><label class="fld grow">Size and Details<input type="text" id="spa_det" value="${esc(spa.details)}" ${dis}></label></div>
+      <div class="row"><label class="fld grow">Additional Details<input type="text" id="spa_det" value="${esc(spa.details)}" ${dis}></label></div>
     </div>
 
     ${detailSection('wf_inc', 'Water Feature', 'wf_price', wf.included, wf.price, 'wf_det', wf.details)}
