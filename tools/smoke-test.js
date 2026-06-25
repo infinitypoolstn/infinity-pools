@@ -11,19 +11,29 @@ const j = (m, u, b) => fetch(B + u, { method: m, headers: { 'Content-Type': 'app
   const c = await j('POST', '/api/clients', { name: 'Test Client', address: '999 Sample Dr', email: '', phone: '615-555-0100' });
   console.log('client created', c.id, 'portal token', !!c.portalToken);
 
-  // 2. specs
-  c.specs.shape = 'geometric'; c.specs.sizeDetails = "15' x 25', 3.5-6' depth";
-  c.specs.hotTub = { included: true, details: "7.5' x 7.5' raised spa" };
-  c.specs.sunShelf = { included: true, details: "5' x 15', 12in depth" };
-  c.specs.spillover = { included: true, details: '3 ft cascading' };
-  c.specs.ledgeSeating = { included: true, details: "5' x 15'", style: 'Baja Ledge' };
-  c.specs.jets = '6'; c.specs.ledLights = '6'; c.specs.equipmentPad = 'Outside club room wall';
-  await j('PUT', '/api/clients/' + c.id, { specs: c.specs });
+  // 2. specs — five priced sections; prices feed the Finance quote
+  const specs = {
+    poolBase: {
+      price: 120000, shape: 'geometric', freeform: '', size: "15' x 25'", depth: "3.5-6'", shapeText: '',
+      jets: '6', ledLights: '6',
+      sunShelf: { included: true, details: "5' x 15', 12in depth" },
+      spillover: '3 ft cascading',
+      ledgeSeating: { included: true, details: "5' x 15'" },
+    },
+    spaBase: { included: true, price: 22000, size: "7.5' x 7.5' raised spa", jets: '8', ledLights: '2' },
+    waterFeature: { included: true, price: 6000, details: 'Sheer descent x2' },
+    coldPlunge: { included: false, price: 0, details: '' },
+    fireFeature: { included: true, price: 8000, details: 'Two fire bowls' },
+    addOns: [{ label: 'Automatic cover', value: 'Coverstar', price: 12000 }],
+  };
+  await j('PUT', '/api/clients/' + c.id, { specs });
 
-  // 3. finance
-  const labels = ['Excavation', 'Pool Forming', 'Shotcrete', 'Tile', 'Materials', 'Labor'];
-  const amounts = [18000, 32000, 41000, 14350, 34000, 25000];
-  await j('PUT', '/api/clients/' + c.id, { finance: { items: labels.map((l, i) => ({ label: l, amount: amounts[i] })) } });
+  // 3. finance is auto-generated from the priced spec sections; verify the total
+  const expectedQuote = 120000 + 22000 + 6000 + 8000 + 12000; // cold plunge excluded
+  const boot = await j('GET', '/api/bootstrap');
+  const fc = boot.clients.find(x => x.id === c.id);
+  const quote = (fc.finance.items || []).reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  console.log('quote auto-derived from specs =', quote, quote === expectedQuote ? 'OK' : 'FAIL expected ' + expectedQuote);
 
   // 4. select finishes
   await j('PUT', '/api/clients/' + c.id, { selectedFinishes: ['Tahoe Blue'], clientTodos: [{ text: 'Provide gas line to heater', done: false }] });
@@ -43,7 +53,7 @@ const j = (m, u, b) => fetch(B + u, { method: m, headers: { 'Content-Type': 'app
 
   // 8. change order
   const co = await j('POST', `/api/clients/${c.id}/change-orders`, { description: 'Upgrade finish to Ocean Blue', value: 2400 });
-  console.log('change orders', co.changeOrders.length, 'value', co.changeOrders[0].value);
+  console.log('change orders', co.client.changeOrders.length, 'value', co.client.changeOrders[0].value);
 
   // 9. complete design phase -> lot prep active
   const done = await j('POST', `/api/clients/${c.id}/phases/design/complete`);

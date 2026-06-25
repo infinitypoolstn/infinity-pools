@@ -225,78 +225,129 @@ window.startOverProject = async function (id) {
 /* ---------- Specs tab ---------- */
 function tSpecs(c) {
   const s = c.specs, dis = c.specsLocked ? 'disabled' : '';
-  const featRow = (key, label, opts = {}) => {
-    const { hasStyle = false, noDetails = false, extra = '' } = opts;
-    const f = s[key] || {};
-    const rowInner = `
-        ${hasStyle ? `<label class="fld grow" style="max-width:220px">Style<select id="sp_${key}_style" ${dis}>${S.settings.ledgeStyles.map(o => `<option ${f.style === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>` : ''}
-        ${noDetails ? '' : `<label class="fld grow">Size & details<input type="text" id="sp_${key}_det" value="${esc(f.details || '')}" ${dis} placeholder="e.g. 5' x 15', 12&quot; depth"></label>`}
-        ${extra}`;
-    return `
-    <div class="card" style="padding:14px 18px;margin-bottom:10px">
-      <label class="check"><input type="checkbox" id="sp_${key}_inc" ${f.included ? 'checked' : ''} ${dis}> Include ${label}</label>
-      ${rowInner.trim() ? `<div class="row">${rowInner}</div>` : ''}
+  const pb = s.poolBase || {}, spa = s.spaBase || {}, wf = s.waterFeature || {}, cp = s.coldPlunge || {}, ff = s.fireFeature || {};
+  const ss = pb.sunShelf || {}, ls = pb.ledgeSeating || {};
+  // live running total of every priced section that's included
+  const initial = (Number(pb.price) || 0)
+    + (spa.included ? (Number(spa.price) || 0) : 0)
+    + (wf.included ? (Number(wf.price) || 0) : 0)
+    + (cp.included ? (Number(cp.price) || 0) : 0)
+    + (ff.included ? (Number(ff.price) || 0) : 0)
+    + (s.addOns || []).reduce((a, x) => a + (Number(x.price) || 0), 0);
+  const price = (idAttr, val) => `<label class="fld" style="max-width:170px">Price ($)<input type="number" step="0.01" min="0" id="${idAttr}" value="${val || ''}" ${dis} oninput="spQuote()"></label>`;
+  const incHead = (incId, label, priceId, inc, val) => `
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <label class="check" style="margin:0"><input type="checkbox" id="${incId}" ${inc ? 'checked' : ''} ${dis} onchange="spQuote()"> Include ${label}</label>
+      ${price(priceId, val)}
     </div>`;
-  };
-  const ht = s.hotTub || {};
+  const detailSection = (incId, label, priceId, inc, val, detId, det) => `
+    <div class="card">
+      ${incHead(incId, label, priceId, inc, val)}
+      <div class="row"><label class="fld grow">Size and Details<input type="text" id="${detId}" value="${esc(det)}" ${dis}></label></div>
+    </div>`;
   $('#tabBody').innerHTML = `
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;background:var(--blue-soft)">
+      <h2 style="margin:0">Price Quote</h2>
+      <span class="total-line" id="spQuoteEl">${money(initial)}</span>
+    </div>
+
     <div class="card">
-      <h2>Pool Size, Shape & Details</h2>
-      <div class="row">
-        <label class="fld" style="max-width:200px">Shape<select id="sp_shape" ${dis}>
-          <option value="geometric" ${s.shape === 'geometric' ? 'selected' : ''}>Geometric</option>
-          <option value="freeform" ${s.shape === 'freeform' ? 'selected' : ''}>Freeform</option></select></label>
-        <label class="fld grow">Size & additional details<textarea id="sp_size" ${dis} placeholder="e.g. 15' x 25', 3.5' to 6' depth, descending entry steps">${esc(s.sizeDetails)}</textarea></label>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Pool Base</h2>
+        ${price('pb_price', pb.price)}
       </div>
       <div class="row">
-        <label class="fld grow">Number of Jets<input type="text" id="sp_jets" value="${esc(s.jets)}" ${dis}></label>
-        <label class="fld grow">Number of LED Lights<input type="text" id="sp_led" value="${esc(s.ledLights)}" ${dis}></label>
+        <label class="fld" style="max-width:200px">Shape<select id="pb_shape" ${dis} onchange="document.getElementById('pb_freeformWrap').style.display=this.value==='freeform'?'':'none'">
+          <option value="geometric" ${pb.shape === 'geometric' ? 'selected' : ''}>Geometric</option>
+          <option value="freeform" ${pb.shape === 'freeform' ? 'selected' : ''}>Freeform</option></select></label>
+        <label class="fld grow" id="pb_freeformWrap" style="${pb.shape === 'freeform' ? '' : 'display:none'}">Freeform details<input type="text" id="pb_freeform" value="${esc(pb.freeform)}" ${dis}></label>
+      </div>
+      <div class="row">
+        <label class="fld grow">Size<input type="text" id="pb_size" value="${esc(pb.size)}" ${dis}></label>
+        <label class="fld grow">Depth<input type="text" id="pb_depth" value="${esc(pb.depth)}" ${dis}></label>
+        <label class="fld grow">Shape<input type="text" id="pb_shapeText" value="${esc(pb.shapeText)}" ${dis}></label>
+      </div>
+      <div class="row">
+        <label class="fld grow">Number of Jets<input type="text" id="pb_jets" value="${esc(pb.jets)}" ${dis}></label>
+        <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="pb_led" value="${esc(pb.ledLights)}" ${dis}></label>
+      </div>
+      <div style="margin-top:6px">
+        <label class="check"><input type="checkbox" id="pb_sunshelf_inc" ${ss.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_sunshelf_wrap').style.display=this.checked?'':'none'"> Sun Shelf</label>
+        <div id="pb_sunshelf_wrap" class="row" style="${ss.included ? '' : 'display:none'}"><label class="fld grow">Sun Shelf details<input type="text" id="pb_sunshelf_det" value="${esc(ss.details)}" ${dis}></label></div>
+      </div>
+      <div class="row"><label class="fld grow">Spillover<input type="text" id="pb_spillover" value="${esc(pb.spillover)}" ${dis}></label></div>
+      <div style="margin-top:6px">
+        <label class="check"><input type="checkbox" id="pb_ledge_inc" ${ls.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_ledge_wrap').style.display=this.checked?'':'none'"> Ledge / Seating</label>
+        <div id="pb_ledge_wrap" class="row" style="${ls.included ? '' : 'display:none'}"><label class="fld grow">Ledge / Seating details<input type="text" id="pb_ledge_det" value="${esc(ls.details)}" ${dis}></label></div>
       </div>
     </div>
-    ${featRow('hotTub', 'Hot Tub / Spa', { extra: `
-        <label class="fld grow">Number of Jets<input type="text" id="sp_hotTub_jets" value="${esc(ht.jets || '')}" ${dis}></label>
-        <label class="fld grow">Number of LED Lights<input type="text" id="sp_hotTub_led" value="${esc(ht.ledLights || '')}" ${dis}></label>` })}
-    ${featRow('sunShelf', 'Sun Shelf')}
-    ${featRow('spillover', 'Spillover', { noDetails: true })}
-    ${featRow('ledgeSeating', 'Ledge / Seating', { hasStyle: true })}
-    ${featRow('waterFeature', 'Water Feature')}
-    ${featRow('fireFeature', 'Fire Feature')}
-    ${featRow('coldPlunge', 'Cold Plunge')}
+
     <div class="card">
+      ${incHead('spa_inc', 'Spa Base', 'spa_price', spa.included, spa.price)}
       <div class="row">
-        <label class="fld grow">Equipment pad location<input type="text" id="sp_pad" value="${esc(s.equipmentPad)}" ${dis}></label>
+        <label class="fld grow">Size<input type="text" id="spa_size" value="${esc(spa.size)}" ${dis}></label>
+        <label class="fld grow">Number of Jets<input type="text" id="spa_jets" value="${esc(spa.jets)}" ${dis}></label>
+        <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="spa_led" value="${esc(spa.ledLights)}" ${dis}></label>
       </div>
     </div>
+
+    ${detailSection('wf_inc', 'Water Feature', 'wf_price', wf.included, wf.price, 'wf_det', wf.details)}
+    ${detailSection('cp_inc', 'Cold Plunge', 'cp_price', cp.included, cp.price, 'cp_det', cp.details)}
+    ${detailSection('ff_inc', 'Fire Feature', 'ff_price', ff.included, ff.price, 'ff_det', ff.details)}
+
     <div class="card">
       <h2>Add-Ons</h2>
-      <div id="addOnList">${s.addOns.map((a, i) => `
+      <div id="addOnList">${(s.addOns || []).map(a => `
         <div class="row" data-addon style="align-items:flex-end">
           <label class="fld grow">Add-on<input type="text" class="ao-label" value="${esc(a.label)}" ${dis}></label>
           <label class="fld grow">Details<input type="text" class="ao-value" value="${esc(a.value)}" ${dis}></label>
-          ${!c.specsLocked ? '<button class="btn danger small" style="margin-bottom:12px" onclick="this.closest(\'[data-addon]\').remove()">✕</button>' : ''}
+          <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="ao-price" value="${a.price || ''}" ${dis} oninput="spQuote()"></label>
+          ${!c.specsLocked ? '<button class="btn danger small" style="margin-bottom:12px" onclick="this.closest(\'[data-addon]\').remove();spQuote()">✕</button>' : ''}
         </div>`).join('')}</div>
       ${!c.specsLocked ? '<button class="btn secondary small" onclick="addAddonRow()">＋ Add new field</button>' : ''}
     </div>
     ${!c.specsLocked ? `<button class="btn" onclick="saveSpecs('${c.id}')">💾 Save Pool Specs</button>` : '<p class="muted">🔒 Locked — contract signed. Use Change Orders for modifications.</p>'}`;
 }
+window.spQuote = function () {
+  const v = i => { const el = document.getElementById(i); return el ? Number(el.value) || 0 : 0; };
+  const on = i => { const el = document.getElementById(i); return el ? el.checked : false; };
+  let t = v('pb_price');
+  if (on('spa_inc')) t += v('spa_price');
+  if (on('wf_inc')) t += v('wf_price');
+  if (on('cp_inc')) t += v('cp_price');
+  if (on('ff_inc')) t += v('ff_price');
+  t += [...document.querySelectorAll('.ao-price')].reduce((a, i) => a + (Number(i.value) || 0), 0);
+  const el = document.getElementById('spQuoteEl'); if (el) el.textContent = money(t);
+};
 window.addAddonRow = function () {
   $('#addOnList').insertAdjacentHTML('beforeend', `
     <div class="row" data-addon style="align-items:flex-end">
       <label class="fld grow">Add-on<input type="text" class="ao-label" placeholder="e.g. Automatic cover"></label>
       <label class="fld grow">Details<input type="text" class="ao-value"></label>
-      <button class="btn danger small" style="margin-bottom:12px" onclick="this.closest('[data-addon]').remove()">✕</button>
+      <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="ao-price" oninput="spQuote()"></label>
+      <button class="btn danger small" style="margin-bottom:12px" onclick="this.closest('[data-addon]').remove();spQuote()">✕</button>
     </div>`);
 };
 window.saveSpecs = async function (id) {
-  const g = (k, f) => { const det = $(`#sp_${k}_det`); return { included: $(`#sp_${k}_inc`).checked, details: det ? det.value : '', ...(f ? { style: $(`#sp_${k}_style`).value } : {}) }; };
+  const val = i => { const el = document.getElementById(i); return el ? el.value : ''; };
+  const num = i => Number(val(i)) || 0;
+  const chk = i => { const el = document.getElementById(i); return el ? el.checked : false; };
   const specs = {
-    shape: $('#sp_shape').value, sizeDetails: $('#sp_size').value,
-    hotTub: { ...g('hotTub'), jets: $('#sp_hotTub_jets').value, ledLights: $('#sp_hotTub_led').value }, sunShelf: g('sunShelf'), spillover: g('spillover'),
-    ledgeSeating: g('ledgeSeating', true), waterFeature: g('waterFeature'), fireFeature: g('fireFeature'), coldPlunge: g('coldPlunge'),
-    jets: $('#sp_jets').value, ledLights: $('#sp_led').value, equipmentPad: $('#sp_pad').value,
-    addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value })).filter(a => a.label.trim()),
+    poolBase: {
+      price: num('pb_price'), shape: val('pb_shape'), freeform: val('pb_freeform'),
+      size: val('pb_size'), depth: val('pb_depth'), shapeText: val('pb_shapeText'),
+      jets: val('pb_jets'), ledLights: val('pb_led'),
+      sunShelf: { included: chk('pb_sunshelf_inc'), details: val('pb_sunshelf_det') },
+      spillover: val('pb_spillover'),
+      ledgeSeating: { included: chk('pb_ledge_inc'), details: val('pb_ledge_det') },
+    },
+    spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led') },
+    waterFeature: { included: chk('wf_inc'), price: num('wf_price'), details: val('wf_det') },
+    coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det') },
+    fireFeature: { included: chk('ff_inc'), price: num('ff_price'), details: val('ff_det') },
+    addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value, price: Number(r.querySelector('.ao-price').value) || 0 })).filter(a => a.label.trim()),
   };
-  try { await api('PUT', '/api/clients/' + id, { specs }); await reload(); toast('Pool specs saved'); route(); }
+  try { await api('PUT', '/api/clients/' + id, { specs }); await reload(); toast('Pool specs saved — quote updated on Finance'); route(); }
   catch (e) { toast(e.message, true); }
 };
 
@@ -390,25 +441,20 @@ window.toggleFinish = async function (id, name) {
 /* ---------- Finance tab ---------- */
 function tFinance(c) {
   const total = c.finance.items.reduce((a, i) => a + (Number(i.amount) || 0), 0);
-  const dis = c.specsLocked ? 'disabled' : '';
   $('#tabBody').innerHTML = `
     <div class="card" style="max-width:680px">
       <h2>Price Quote</h2>
-      <div id="finRows">${c.finance.items.map((it, i) => `
-        <div class="row" style="align-items:center;margin-bottom:8px" data-fin>
-          <input class="input grow fin-label" value="${esc(it.label)}" ${dis}>
-          <span style="font-weight:700;color:var(--mid)">$</span>
-          <input class="input fin-amount" type="number" step="0.01" min="0" style="max-width:160px;text-align:right" value="${it.amount || ''}" ${dis} oninput="finTotal()">
-          ${!c.specsLocked ? '<button class="btn danger small" onclick="this.closest(\'[data-fin]\').remove();finTotal()">✕</button>' : ''}
-        </div>`).join('')}</div>
-      ${!c.specsLocked ? '<button class="btn secondary small" onclick="finAdd()">＋ Add a charge</button>' : ''}
+      <div class="banner info">Pricing is set on the <a href="#/client/${c.id}/specs">Pool Specs</a> tab — each priced section feeds this quote. ${c.specsLocked ? 'Contract is signed: price changes go through Change Orders.' : ''}</div>
+      <table class="tbl"><tbody>
+        ${c.finance.items.length ? c.finance.items.map(it => `<tr><td>${esc(it.label)}</td><td class="right money">${money(it.amount)}</td></tr>`).join('')
+          : '<tr><td class="muted">No priced sections yet — add them on Pool Specs.</td><td></td></tr>'}
+      </tbody></table>
       <hr style="border:none;border-top:2px solid var(--blue-soft);margin:16px 0">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span class="total-line">Total Quote</span><span class="total-line" id="finTotalEl">${money(total)}</span>
+        <span class="total-line">Total Quote</span><span class="total-line">${money(total)}</span>
       </div>
       ${c._coTotal ? `<div style="display:flex;justify-content:space-between;margin-top:6px" class="muted"><span>+ Change orders</span><span class="money">${money(c._coTotal)}</span></div>
       <div style="display:flex;justify-content:space-between;font-weight:800;color:var(--blue-dark)"><span>Contract total</span><span class="money">${money(total + c._coTotal)}</span></div>` : ''}
-      ${!c.specsLocked ? `<button class="btn" style="margin-top:16px" onclick="finSave('${c.id}')">💾 Save Finance</button>` : '<p class="muted" style="margin-top:12px">🔒 Locked — contract signed. Price changes go through Change Orders.</p>'}
     </div>
     <div class="card" style="max-width:680px">
       <h2>Amount Due at Each Phase</h2>
@@ -417,26 +463,6 @@ function tFinance(c) {
       </tbody></table>
     </div>`;
 }
-window.finAdd = function () {
-  $('#finRows').insertAdjacentHTML('beforeend', `
-    <div class="row" style="align-items:center;margin-bottom:8px" data-fin>
-      <input class="input grow fin-label" placeholder="Charge description">
-      <span style="font-weight:700;color:var(--mid)">$</span>
-      <input class="input fin-amount" type="number" step="0.01" min="0" style="max-width:160px;text-align:right" oninput="finTotal()">
-      <button class="btn danger small" onclick="this.closest('[data-fin]').remove();finTotal()">✕</button>
-    </div>`);
-};
-window.finTotal = function () {
-  const t = [...document.querySelectorAll('.fin-amount')].reduce((a, i) => a + (Number(i.value) || 0), 0);
-  $('#finTotalEl').textContent = money(t);
-};
-window.finSave = async function (id) {
-  const items = [...document.querySelectorAll('[data-fin]')].map(r => ({
-    label: r.querySelector('.fin-label').value, amount: Number(r.querySelector('.fin-amount').value) || 0,
-  })).filter(i => i.label.trim());
-  try { await api('PUT', '/api/clients/' + id, { finance: { items } }); await reload(); toast('Finance saved'); route(); }
-  catch (e) { toast(e.message, true); }
-};
 
 /* ---------- Files tab ---------- */
 function tFiles(c) {

@@ -161,6 +161,9 @@ app.put('/api/clients/:id', (req, res) => {
   if (b.specs !== undefined) {
     if (c.specsLocked) return res.status(409).json({ error: 'Specs are locked: the contract is signed. Enter this change as a Change Order.' });
     c.specs = b.specs;
+    // The priced spec sections are the source of truth for the quote: regenerate
+    // the Finance line items so the two totals always match.
+    c.finance = store.specsToFinance(b.specs);
   }
   for (const k of ['name', 'address', 'email', 'phone', 'status', 'scope', 'notes', 'selectedFinishes', 'clientTodos']) {
     if (b[k] !== undefined) c[k] = b[k];
