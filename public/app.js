@@ -291,6 +291,7 @@ function tSpecs(c) {
         <label class="fld grow">Number of Jets<input type="text" id="spa_jets" value="${esc(spa.jets)}" ${dis}></label>
         <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="spa_led" value="${esc(spa.ledLights)}" ${dis}></label>
       </div>
+      <div class="row"><label class="fld grow">Size and Details<input type="text" id="spa_det" value="${esc(spa.details)}" ${dis}></label></div>
     </div>
 
     ${detailSection('wf_inc', 'Water Feature', 'wf_price', wf.included, wf.price, 'wf_det', wf.details)}
@@ -343,7 +344,7 @@ window.saveSpecs = async function (id) {
       spillover: { included: chk('pb_spillover_inc'), details: val('pb_spillover_det') },
       ledgeSeating: { included: chk('pb_ledge_inc'), details: val('pb_ledge_det') },
     },
-    spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led') },
+    spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led'), details: val('spa_det') },
     waterFeature: { included: chk('wf_inc'), price: num('wf_price'), details: val('wf_det') },
     coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det') },
     fireFeature: { included: chk('ff_inc'), price: num('ff_price'), details: val('ff_det') },
