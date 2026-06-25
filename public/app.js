@@ -225,38 +225,45 @@ window.startOverProject = async function (id) {
 /* ---------- Specs tab ---------- */
 function tSpecs(c) {
   const s = c.specs, dis = c.specsLocked ? 'disabled' : '';
-  const featRow = (key, label, hasStyle = false) => {
+  const featRow = (key, label, opts = {}) => {
+    const { hasStyle = false, noDetails = false, extra = '' } = opts;
     const f = s[key] || {};
+    const rowInner = `
+        ${hasStyle ? `<label class="fld grow" style="max-width:220px">Style<select id="sp_${key}_style" ${dis}>${S.settings.ledgeStyles.map(o => `<option ${f.style === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>` : ''}
+        ${noDetails ? '' : `<label class="fld grow">Size & details<input type="text" id="sp_${key}_det" value="${esc(f.details || '')}" ${dis} placeholder="e.g. 5' x 15', 12&quot; depth"></label>`}
+        ${extra}`;
     return `
     <div class="card" style="padding:14px 18px;margin-bottom:10px">
       <label class="check"><input type="checkbox" id="sp_${key}_inc" ${f.included ? 'checked' : ''} ${dis}> Include ${label}</label>
-      <div class="row">
-        ${hasStyle ? `<label class="fld grow" style="max-width:220px">Style<select id="sp_${key}_style" ${dis}>${S.settings.ledgeStyles.map(o => `<option ${f.style === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>` : ''}
-        <label class="fld grow">Size & details<input type="text" id="sp_${key}_det" value="${esc(f.details || '')}" ${dis} placeholder="e.g. 5' x 15', 12&quot; depth"></label>
-      </div>
+      ${rowInner.trim() ? `<div class="row">${rowInner}</div>` : ''}
     </div>`;
   };
+  const ht = s.hotTub || {};
   $('#tabBody').innerHTML = `
     <div class="card">
-      <h2>Pool Size & Shape</h2>
+      <h2>Pool Size, Shape & Details</h2>
       <div class="row">
         <label class="fld" style="max-width:200px">Shape<select id="sp_shape" ${dis}>
           <option value="geometric" ${s.shape === 'geometric' ? 'selected' : ''}>Geometric</option>
           <option value="freeform" ${s.shape === 'freeform' ? 'selected' : ''}>Freeform</option></select></label>
         <label class="fld grow">Size & additional details<textarea id="sp_size" ${dis} placeholder="e.g. 15' x 25', 3.5' to 6' depth, descending entry steps">${esc(s.sizeDetails)}</textarea></label>
       </div>
+      <div class="row">
+        <label class="fld grow">Number of Jets<input type="text" id="sp_jets" value="${esc(s.jets)}" ${dis}></label>
+        <label class="fld grow">Number of LED Lights<input type="text" id="sp_led" value="${esc(s.ledLights)}" ${dis}></label>
+      </div>
     </div>
-    ${featRow('hotTub', 'Hot Tub / Spa')}
+    ${featRow('hotTub', 'Hot Tub / Spa', { extra: `
+        <label class="fld grow">Number of Jets<input type="text" id="sp_hotTub_jets" value="${esc(ht.jets || '')}" ${dis}></label>
+        <label class="fld grow">Number of LED Lights<input type="text" id="sp_hotTub_led" value="${esc(ht.ledLights || '')}" ${dis}></label>` })}
     ${featRow('sunShelf', 'Sun Shelf')}
-    ${featRow('spillover', 'Spillover')}
-    ${featRow('ledgeSeating', 'Ledge / Seating', true)}
+    ${featRow('spillover', 'Spillover', { noDetails: true })}
+    ${featRow('ledgeSeating', 'Ledge / Seating', { hasStyle: true })}
     ${featRow('waterFeature', 'Water Feature')}
     ${featRow('fireFeature', 'Fire Feature')}
     ${featRow('coldPlunge', 'Cold Plunge')}
     <div class="card">
       <div class="row">
-        <label class="fld grow">Number of jets<input type="text" id="sp_jets" value="${esc(s.jets)}" ${dis}></label>
-        <label class="fld grow">Number of LED lights<input type="text" id="sp_led" value="${esc(s.ledLights)}" ${dis}></label>
         <label class="fld grow">Equipment pad location<input type="text" id="sp_pad" value="${esc(s.equipmentPad)}" ${dis}></label>
       </div>
     </div>
@@ -281,10 +288,10 @@ window.addAddonRow = function () {
     </div>`);
 };
 window.saveSpecs = async function (id) {
-  const g = (k, f) => ({ included: $(`#sp_${k}_inc`).checked, details: $(`#sp_${k}_det`).value, ...(f ? { style: $(`#sp_${k}_style`).value } : {}) });
+  const g = (k, f) => { const det = $(`#sp_${k}_det`); return { included: $(`#sp_${k}_inc`).checked, details: det ? det.value : '', ...(f ? { style: $(`#sp_${k}_style`).value } : {}) }; };
   const specs = {
     shape: $('#sp_shape').value, sizeDetails: $('#sp_size').value,
-    hotTub: g('hotTub'), sunShelf: g('sunShelf'), spillover: g('spillover'),
+    hotTub: { ...g('hotTub'), jets: $('#sp_hotTub_jets').value, ledLights: $('#sp_hotTub_led').value }, sunShelf: g('sunShelf'), spillover: g('spillover'),
     ledgeSeating: g('ledgeSeating', true), waterFeature: g('waterFeature'), fireFeature: g('fireFeature'), coldPlunge: g('coldPlunge'),
     jets: $('#sp_jets').value, ledLights: $('#sp_led').value, equipmentPad: $('#sp_pad').value,
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value })).filter(a => a.label.trim()),
