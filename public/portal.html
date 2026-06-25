@@ -64,6 +64,17 @@
   .fin .nm { padding:8px 10px; font-size:12.5px; font-weight:700; }
   .fin .nm small { display:block; color:var(--mid); font-weight:500; }
 
+  /* finish picker */
+  .brand-group { margin-top:14px; }
+  .brand-group h3 { margin:0 0 8px; font-size:14px; color:var(--blue-dark); }
+  .fin.pickable { cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .1s; }
+  .fin.pickable:hover { border-color:var(--future); }
+  .fin.pickable:active { transform:scale(.98); }
+  .fin.pickable.sel { border-color:var(--blue); box-shadow:0 0 0 3px rgba(10,94,168,.18); }
+  .fin.pickable.sel .nm { color:var(--blue); }
+  .pick-hint { color:var(--mid); font-size:13px; margin:-4px 0 4px; }
+  .pick-saving { color:var(--blue); font-size:13px; font-weight:700; min-height:18px; margin-top:8px; }
+
   svg .raise { transition:all 1s ease; }
   footer { text-align:center; margin-top:28px; color:var(--mid); font-size:12.5px; }
 
@@ -206,6 +217,57 @@ async function loadPortal(sessionId) {
     document.getElementById('wrap').innerHTML = '<div class="card"><h2>Project not found</h2><p class="muted">Please check your link or contact Infinity Pools.</p></div>';
     return;
   }
+  renderPortal(d);
+}
+
+// Grouped, tappable Pebble swatches the client chooses their interior finish from.
+function finishPicker(d) {
+  if (!d.finishCatalog || !d.finishCatalog.length) return '';
+  const selected = new Set((d.selectedFinishes || []).map(f => f.name));
+  const brands = ['PebbleTec', 'PebbleSheen', 'PebbleFina', 'PebbleBrilliance'];
+  const groups = brands.map(brand => {
+    const items = d.finishCatalog.filter(f => f.brand === brand);
+    if (!items.length) return '';
+    return `<div class="brand-group"><h3>${esc(brand)}</h3><div class="fin-grid">${items.map(f => `
+      <div class="fin pickable ${selected.has(f.name) ? 'sel' : ''}" data-finish="${esc(f.name)}" onclick="selectFinish(this.dataset.finish)">
+        ${f.image ? `<img loading="lazy" src="${esc(f.image)}" alt="${esc(f.name)}">` : `<div class="cb" style="background:${esc(f.color || '#8fb8d4')}"></div>`}
+        <div class="nm">${selected.has(f.name) ? '✓ ' : ''}${esc(f.name)}${f.shimmer ? ' ✨' : ''}<small>${esc(brand)}</small></div>
+      </div>`).join('')}</div></div>`;
+  }).join('');
+  return `
+    <div class="card">
+      <h2>Choose Your Interior Finish</h2>
+      <p class="pick-hint">Tap a Pebble Tec color to choose your pool's interior finish. You can change it any time before it's installed.</p>
+      <div class="pick-saving" id="pickSaving"></div>
+      ${groups}
+    </div>`;
+}
+
+window.selectFinish = async function (name) {
+  const sessionId = localStorage.getItem(SESSION_KEY);
+  const saving = document.getElementById('pickSaving');
+  if (saving) saving.textContent = 'Saving your choice…';
+  try {
+    const res = await fetch('/api/portal/' + token + '/select-finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-portal-session': sessionId },
+      body: JSON.stringify({ name }),
+    });
+    if (res.status === 401) { localStorage.removeItem(SESSION_KEY); showEmailGate(); return; }
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    const y = window.scrollY;
+    renderPortal(d);
+    window.scrollTo(0, y);
+    const s2 = document.getElementById('pickSaving');
+    if (s2) s2.textContent = '✓ Saved — “' + name + '” is now your selected finish.';
+  } catch (e) {
+    const s2 = document.getElementById('pickSaving');
+    if (s2) s2.textContent = 'Could not save — please try again.';
+  }
+};
+
+function renderPortal(d) {
   const phases = d.phases;
   const curIdx = phases.findIndex(p => p.status === 'active');
   const doneAll = phases.every(p => p.status === 'complete');
@@ -273,6 +335,8 @@ async function loadPortal(sessionId) {
         ${d.selectedFinishes.map(f => `<div class="fin">${f.image ? `<img src="${esc(f.image)}" alt="${esc(f.name)}">` : `<div class="cb" style="background:${esc(f.color || '#8fb8d4')}"></div>`}<div class="nm">${esc(f.name)}<small>${esc(f.brand || '')}</small></div></div>`).join('')}
       </div>
     </div>` : ''}
+
+    ${finishPicker(d)}
 
     <footer>Infinity Pools · Questions? Just reply to any of our emails — we're happy to help.</footer>`;
 }

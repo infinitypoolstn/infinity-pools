@@ -95,6 +95,11 @@ function publicClientView(c) {
       const f = store.data.finishes.find(f => f.name === name || (f.brand + ' ' + f.name) === name);
       return f ? { name: f.name, brand: f.brand, image: f.localImage || f.imageUrl, color: f.color } : { name };
     }),
+    // Active Pebble finishes the client can choose from on the portal (no pricing).
+    finishCatalog: (store.data.finishes || []).filter(f => f.active).map(f => ({
+      name: f.name, brand: f.brand, tier: f.tier,
+      image: f.localImage || f.imageUrl, color: f.color, shimmer: !!f.shimmer,
+    })),
     clientTodos: (c.clientTodos || []).filter(t => !t.done),
     contractSigned: !!c.contract.signedAt,
     quoteTotal: quote,
@@ -710,14 +715,34 @@ app.post('/api/portal/:token/verify', (req, res) => {
   res.json({ sessionId });
 });
 
-app.get('/api/portal/:token', (req, res) => {
+// Resolve the client for an authenticated portal request, or send the error and
+// return null. Requires a valid, unexpired session for this token.
+function portalClient(req, res) {
   const c = store.data.clients.find(c => c.portalToken === req.params.token);
-  if (!c) return res.status(404).json({ error: 'Project not found' });
+  if (!c) { res.status(404).json({ error: 'Project not found' }); return null; }
   const sessionId = req.headers['x-portal-session'];
   const session = sessionId && portalSessions.get(sessionId);
   if (!session || session.portalToken !== req.params.token || session.expires < Date.now()) {
-    return res.status(401).json({ error: 'verify' });
+    res.status(401).json({ error: 'verify' }); return null;
   }
+  return c;
+}
+
+app.get('/api/portal/:token', (req, res) => {
+  const c = portalClient(req, res); if (!c) return;
+  res.json(publicClientView(c));
+});
+
+// Client picks their interior (Pebble) finish from the portal. Single selection;
+// the admin can still adjust it on the Design tab.
+app.post('/api/portal/:token/select-finish', (req, res) => {
+  const c = portalClient(req, res); if (!c) return;
+  const name = String(req.body.name || '').trim();
+  const match = store.data.finishes.find(f => f.active && f.name === name);
+  if (!match) return res.status(400).json({ error: 'Unknown finish' });
+  c.selectedFinishes = [match.name];
+  store.addAlert(`${c.address}: client chose interior finish "${match.brand} ${match.name}" on the portal.`, { clientId: c.id, type: 'info' });
+  store.save();
   res.json(publicClientView(c));
 });
 
