@@ -410,7 +410,13 @@ function tDesign(c) {
   const tierOrder = ['Standard', 'Upgrade', 'Premium', 'Extra Premium', 'Brilliance'];
   const brands = ['PebbleTec', 'PebbleSheen', 'PebbleFina', 'PebbleBrilliance'];
   const plasterVal = c.contract.plasterColor || (c.selectedFinishes || [])[0] || '';
+  const cfc = c.clientFinishChoice;
+  const clientPickBanner = cfc
+    ? `<div class="banner" style="background:#e7f6ec;border:1px solid #bfe6cc;color:#1f8a4c;margin-bottom:14px">
+        🟦 <b>Client selected from the portal:</b> ${esc(cfc.brand ? cfc.brand + ' ' : '')}${esc(cfc.name)}${cfc.at ? ' · ' + fmtDate(cfc.at) : ''}</div>`
+    : '';
   $('#tabBody').innerHTML = `
+    ${clientPickBanner}
     <div class="card" style="max-width:760px;margin-bottom:14px">
       <h2>Project Selections</h2>
       <div class="row">

@@ -775,6 +775,8 @@ app.post('/api/portal/:token/select-finish', (req, res) => {
   const match = store.data.finishes.find(f => f.active && f.name === name);
   if (!match) return res.status(400).json({ error: 'Unknown finish' });
   c.selectedFinishes = [match.name];
+  // Record that the client (not the admin) made this pick, for the Design tab.
+  c.clientFinishChoice = { name: match.name, brand: match.brand, at: new Date().toISOString() };
   store.addAlert(`${c.address}: client chose interior finish "${match.brand} ${match.name}" on the portal.`, { clientId: c.id, type: 'info' });
   store.save();
   res.json(publicClientView(c));
