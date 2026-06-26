@@ -14,6 +14,7 @@ const pebble = require('./lib/pebble-check');
 const contractPdf = require('./lib/contract-pdf');
 const quickbooks = require('./lib/quickbooks');
 const adobeSign = require('./lib/adobe-sign');
+const docuseal = require('./lib/docuseal');
 const { extractInvoiceTotal } = require('./lib/invoice-amount');
 
 const PORT = process.env.PORT || 4525;
@@ -31,7 +32,7 @@ const APP_PASS = process.env.APP_PASS || '';
 if (APP_USER && APP_PASS) {
   // Public (no Basic Auth): health check, client portal + its API, Adobe Sign webhooks,
   // and the finish swatch images the portal displays. /uploads (contracts, invoices) stays protected.
-  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/adobe-sign', '/swatches/'];
+  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/adobe-sign', '/api/webhooks/docuseal', '/swatches/'];
   app.use((req, res, next) => {
     if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
     const auth = req.headers.authorization;
@@ -102,6 +103,10 @@ function publicClientView(c) {
     })),
     clientTodos: (c.clientTodos || []).filter(t => !t.done),
     contractSigned: !!c.contract.signedAt,
+    // Embedded DocuSeal signing form, shown while a submission is pending.
+    signing: (!c.contract.signedAt && c.contract.docusealEmbedSrc && c.contract.docusealStatus === 'pending')
+      ? { provider: 'docuseal', src: c.contract.docusealEmbedSrc }
+      : null,
     quoteTotal: quote,
     changeOrderTotal: store.changeOrderTotal(c),
     collected: store.collected(c),
@@ -137,6 +142,7 @@ app.get('/api/bootstrap', (req, res) => {
     gmailConfigured: mailer.configured(),
     quickbooksConnected: quickbooks.connected(),
     adobeSignConfigured: adobeSign.configured(store.data.settings),
+    docusealConfigured: docuseal.configured(store.data.settings),
     clients: d.clients.map(c => ({
       ...c,
       _quote: store.quoteTotal(c),
@@ -263,14 +269,15 @@ app.post('/api/clients/:id/contract/send', wrap(async (req, res) => {
   res.json({ client: c, email: rec });
 }));
 
-// Accept/sign: works for Adobe-signed and paper. Locks specs + pricing, starts
-// Design phase, sends design draw payment request, creates QBO invoice if connected.
-app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
-  const c = getClient(req, res); if (!c) return;
-  const { method = 'adobe', depositMethod = null } = req.body; // method: adobe|paper, depositMethod: check|cash|null
+// Shared "contract is now signed" flow, used by manual mark-signed, Adobe Sign,
+// and DocuSeal: locks specs + pricing, starts the Design phase, creates the QBO
+// estimate, alerts the team, and either records an in-person deposit or sends the
+// design-draw payment request. Returns { qb, qbError }.
+async function finalizeContractSigning(c, { method, depositMethod = null, finishText = null, note = '' }) {
   c.contract.signedAt = new Date().toISOString();
   c.contract.signedMethod = method;
   c.contract.depositMethod = depositMethod;
+  if (finishText && !c.selectedFinishes.includes(finishText)) c.selectedFinishes.push(finishText);
   c.specsLocked = true;
   c.status = 'active';
 
@@ -288,17 +295,15 @@ app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
     catch (e) { qbError = e.message; store.addAlert('QuickBooks estimate creation failed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
   }
 
-  store.addAlert(`🎉 Contract SIGNED (${method}${depositMethod ? ', deposit by ' + depositMethod : ''}): ${c.name} — ${c.address}. Design phase started.`, { clientId: c.id, type: 'phase' });
+  store.addAlert(`🎉 Contract SIGNED (${method}${depositMethod ? ', deposit by ' + depositMethod : ''}): ${c.name} — ${c.address}. Design phase started.${note}`, { clientId: c.id, type: 'phase' });
 
   if (depositMethod) {
-    // deposit already collected in person
     design.paymentReceivedAt = new Date().toISOString();
     design.paymentMethod = depositMethod;
   } else if (c.email && design.drawPct > 0) {
     await alerts.sendPaymentRequest(c, design);
   }
 
-  // Auto-create the Design phase task workflow
   await alerts.spawnPhaseTasks(c, design);
 
   const emails = mailer.allEmployeeEmails();
@@ -306,10 +311,19 @@ app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
     await mailer.send({
       to: emails,
       subject: `Contract signed — ${c.address}`,
-      html: `<p><b>${c.name}</b> signed the contract for <b>${c.address}</b> (${alerts.fmtMoney(store.quoteTotal(c))}).</p><p>The project is now in the <b>Design Finalization</b> phase.</p>`,
+      html: `<p><b>${c.name}</b> signed the contract for <b>${c.address}</b> (${alerts.fmtMoney(store.quoteTotal(c))}).</p>${finishText ? `<p>Finish selection: <b>${finishText}</b></p>` : ''}<p>The project is now in the <b>Design Finalization</b> phase.</p>`,
     });
   }
   store.save();
+  return { qb, qbError };
+}
+
+// Accept/sign: works for Adobe-signed and paper. Locks specs + pricing, starts
+// Design phase, sends design draw payment request, creates QBO invoice if connected.
+app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const { method = 'adobe', depositMethod = null } = req.body; // method: adobe|paper, depositMethod: check|cash|null
+  const { qb, qbError } = await finalizeContractSigning(c, { method, depositMethod });
   res.json({ client: c, quickbooksInvoice: qb, quickbooksError: qbError });
 }));
 
@@ -321,39 +335,9 @@ app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
 async function processAdobeSigning(c, agreementId) {
   const csv = await adobeSign.getFormData(agreementId, store.data.settings);
   const finish = adobeSign.parseFinishFromFormData(csv);
-  if (finish) {
-    c.contract.adobeFinishSelection = finish;
-    if (!c.selectedFinishes.includes(finish)) c.selectedFinishes.push(finish);
-  }
+  if (finish) c.contract.adobeFinishSelection = finish;
   c.contract.adobeStatus = 'SIGNED';
-  c.contract.signedAt = new Date().toISOString();
-  c.contract.signedMethod = 'adobe';
-  c.specsLocked = true;
-  c.status = 'active';
-  const design = c.phases[0];
-  design.status = 'active';
-  design.startedAt = new Date().toISOString();
-  if (!design.dueDate) {
-    const d = new Date(); d.setDate(d.getDate() + 7);
-    design.dueDate = d.toISOString().slice(0, 10);
-  }
-  let qbError = null;
-  if (quickbooks.connected()) {
-    try { await quickbooks.createContractEstimate(c, store.quoteTotal(c)); }
-    catch (e) { qbError = e.message; store.addAlert('QuickBooks estimate creation failed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
-  }
-  store.addAlert(`🎉 Contract SIGNED via Adobe Sign: ${c.name} — ${c.address}. Design phase started.${finish ? ' Finish: ' + finish : ''}`, { clientId: c.id, type: 'phase' });
-  if (c.email && design.drawPct > 0) await alerts.sendPaymentRequest(c, design);
-  await alerts.spawnPhaseTasks(c, design);
-  const emails = mailer.allEmployeeEmails();
-  if (emails.length) {
-    await mailer.send({
-      to: emails,
-      subject: `Contract signed — ${c.address}`,
-      html: `<p><b>${c.name}</b> signed the contract for <b>${c.address}</b> via Adobe Sign (${alerts.fmtMoney(store.quoteTotal(c))}).</p>${finish ? `<p>Pebble Tec finish selection: <b>${finish}</b></p>` : ''}<p>Project is now in <b>Design Finalization</b>.</p>`,
-    });
-  }
-  store.save();
+  const { qbError } = await finalizeContractSigning(c, { method: 'adobe', finishText: finish, note: finish ? ' Finish: ' + finish : '' });
   return { finish, qbError };
 }
 
@@ -428,6 +412,112 @@ app.post('/api/settings/adobe-sign/register-webhook', wrap(async (req, res) => {
   const webhookUrl = `${req.protocol}://${req.get('host')}/api/webhooks/adobe-sign`;
   const result = await adobeSign.registerWebhook(webhookUrl, store.data.settings);
   res.json({ ok: true, webhookUrl, result });
+}));
+
+// ---------------------------------------------------------------------------
+// DocuSeal — in-portal contract e-signing
+// ---------------------------------------------------------------------------
+
+// Download the signed PDF, save it to the client's files, then run the shared
+// "contract signed" flow. Idempotent: no-op once signedAt is set.
+async function processDocusealCompletion(c) {
+  if (c.contract.signedAt) return;
+  let signedUrl = null;
+  try {
+    if (c.contract.docusealSubmissionId) {
+      const sub = await docuseal.getSubmission(c.contract.docusealSubmissionId, store.data.settings);
+      c.contract.docusealStatus = sub.status || 'completed';
+      signedUrl = docuseal.signedPdfUrl(sub);
+    }
+  } catch (e) { store.addAlert('DocuSeal: could not fetch submission for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
+
+  if (signedUrl) {
+    try {
+      const r = await fetch(signedUrl);
+      if (r.ok) {
+        const buf = Buffer.from(await r.arrayBuffer());
+        const dir = path.join(UPLOADS_DIR, c.id);
+        fs.mkdirSync(dir, { recursive: true });
+        const storedName = `signed-contract-${Date.now()}.pdf`;
+        fs.writeFileSync(path.join(dir, storedName), buf);
+        c.files.push({ id: store.id(), originalName: 'Signed Contract.pdf', storedName, category: 'Signed Contract', size: buf.length, uploadedAt: new Date().toISOString(), isCoverPhoto: false });
+      }
+    } catch (e) { store.addAlert('DocuSeal: could not download signed PDF for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
+  }
+
+  c.contract.docusealStatus = 'completed';
+  await finalizeContractSigning(c, { method: 'docuseal', note: ' Signed in client portal.' });
+}
+
+// Generate the signing PDF, create a DocuSeal template + embedded submission.
+app.post('/api/clients/:id/contract/docuseal-send', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  if (!c.email) return res.status(400).json({ error: 'Client has no email address on file' });
+  if (!docuseal.configured(store.data.settings)) return res.status(400).json({ error: 'DocuSeal is not configured — add your API key in Settings' });
+  const pdfPath = await contractPdf.generate(c, { uploadsDir: UPLOADS_DIR, forSigning: true });
+  const tpl = await docuseal.createTemplateFromPdf(c, pdfPath, store.data.settings);
+  const subResp = await docuseal.createSubmission(c, tpl.id, store.data.settings);
+  const sub = docuseal.firstSubmitter(subResp);
+  if (!sub.slug) return res.status(502).json({ error: 'DocuSeal did not return a signing link' });
+  c.contract.docusealTemplateId = tpl.id;
+  c.contract.docusealSubmissionId = sub.submissionId;
+  c.contract.docusealSlug = sub.slug;
+  c.contract.docusealEmbedSrc = sub.embedSrc;
+  c.contract.docusealStatus = 'pending';
+  c.contract.docusealSentAt = new Date().toISOString();
+  if (c.status === 'prospect') c.status = 'contract_sent';
+  store.addAlert(`Contract ready for in-portal signing (DocuSeal) — ${c.name} (${c.address})`, { clientId: c.id });
+  store.save();
+  res.json({ client: c, slug: sub.slug, embedSrc: sub.embedSrc });
+}));
+
+// Admin poll: check DocuSeal status and finalize if completed.
+app.post('/api/clients/:id/contract/docuseal-status', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  if (!c.contract.docusealSubmissionId) return res.status(400).json({ error: 'No DocuSeal submission found for this client' });
+  if (!docuseal.configured(store.data.settings)) return res.status(400).json({ error: 'DocuSeal is not configured' });
+  const sub = await docuseal.getSubmission(c.contract.docusealSubmissionId, store.data.settings);
+  c.contract.docusealStatus = sub.status || c.contract.docusealStatus;
+  if ((sub.status === 'completed') && !c.contract.signedAt) {
+    await processDocusealCompletion(c);
+    return res.json({ client: c, status: 'completed' });
+  }
+  store.save();
+  res.json({ client: c, status: c.contract.docusealStatus });
+}));
+
+// Webhook — DocuSeal POSTs here on form.completed / submission.completed.
+app.post('/api/webhooks/docuseal', wrap(async (req, res) => {
+  res.json({ ok: true }); // acknowledge immediately; process async
+  const ev = req.body || {};
+  if (!['form.completed', 'submission.completed'].includes(ev.event_type)) return;
+  const data = ev.data || {};
+  const submission = data.submission || data;
+  const extId = data.external_id || submission.external_id;
+  let c = extId && store.data.clients.find(x => x.id === extId);
+  if (!c) {
+    const subId = submission.id || data.submission_id;
+    c = subId && store.data.clients.find(x => String(x.contract.docusealSubmissionId) === String(subId));
+  }
+  if (!c || c.contract.signedAt) return;
+  try {
+    await processDocusealCompletion(c);
+  } catch (e) {
+    store.addAlert('DocuSeal webhook error: ' + e.message, { type: 'error' });
+    store.save();
+    console.error('DocuSeal webhook:', e);
+  }
+}));
+
+// Test DocuSeal credentials.
+app.post('/api/settings/docuseal/test', wrap(async (req, res) => {
+  if (!docuseal.configured(store.data.settings)) return res.status(400).json({ error: 'DocuSeal API key not saved yet' });
+  const url = docuseal.base(store.data.settings) + '/templates?limit=1';
+  const r = await fetch(url, { headers: { 'X-Auth-Token': store.data.settings.docuseal.apiKey } });
+  const text = await r.text();
+  let json; try { json = JSON.parse(text); } catch (e) { json = {}; }
+  if (!r.ok) return res.status(400).json({ error: (json && (json.error || json.message)) || `HTTP ${r.status} — check your API key and base URL` });
+  res.json({ ok: true });
 }));
 
 // Validate QuickBooks credentials without clearing the token on failure.
@@ -732,6 +822,20 @@ app.get('/api/portal/:token', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
   res.json(publicClientView(c));
 });
+
+// Client finished signing in the portal — confirm with DocuSeal and finalize.
+// Lets signing complete even without a public webhook (mirrors Adobe's poll).
+app.post('/api/portal/:token/contract/signed', wrap(async (req, res) => {
+  const c = portalClient(req, res); if (!c) return;
+  if (c.contract.signedAt) return res.json(publicClientView(c));
+  if (c.contract.docusealSubmissionId && docuseal.configured(store.data.settings)) {
+    try {
+      const sub = await docuseal.getSubmission(c.contract.docusealSubmissionId, store.data.settings);
+      if (sub.status === 'completed') await processDocusealCompletion(c);
+    } catch (e) { /* webhook will finalize if the poll is too early */ }
+  }
+  res.json(publicClientView(c));
+}));
 
 // Client picks their interior (Pebble) finish from the portal. Single selection;
 // the admin can still adjust it on the Design tab.

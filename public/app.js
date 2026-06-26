@@ -566,6 +566,24 @@ function tContract(c) {
     adobeSection = `<div style="margin-top:10px"><button class="btn" onclick="sendViaAdobeSign('${c.id}')" ${dis}>📨 Send via Adobe Sign</button><p class="muted" style="margin-top:6px">Uploads the contract PDF to your Adobe Sign account and emails the client a signing link. The Pebble Tec finish selection field on the signature page becomes a required text field the client fills in before signing.</p></div>`;
   }
 
+  // DocuSeal in-portal signing section
+  let docusealSection;
+  if (!S.docusealConfigured) {
+    docusealSection = `<p class="muted" style="margin-top:10px"><a href="#/settings">Configure DocuSeal in Settings</a> to let clients sign right inside their portal.</p>`;
+  } else if (c.contract.signedAt && c.contract.signedMethod === 'docuseal') {
+    docusealSection = `<div class="banner info">✅ Signed in the client portal (DocuSeal).</div>`;
+  } else if (c.contract.docusealStatus === 'pending') {
+    const sent = c.contract.docusealSentAt ? `Ready since ${fmtDate(c.contract.docusealSentAt)}` : '';
+    docusealSection = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <span class="chip prospect">Awaiting Signature (in portal)</span><span class="muted">${sent}</span>
+        <button class="btn secondary small" onclick="checkDocusealStatus('${c.id}')">↻ Check Signing Status</button></div>
+      <p class="muted" style="margin-top:6px">The client signs from their portal link. You'll be notified automatically when it's done.</p>`;
+  } else {
+    const dis = c.email ? '' : 'disabled title="Client has no email address"';
+    docusealSection = `<div style="margin-top:10px"><button class="btn" onclick="sendViaDocuseal('${c.id}')" ${dis}>🖊️ Enable In-Portal Signing (DocuSeal)</button>
+      <p class="muted" style="margin-top:6px">Prepares the contract for the client to review and sign directly in their portal — no email round-trip. The signed PDF is saved to Files automatically.</p></div>`;
+  }
+
   const signedSection = c.contract.signedAt
     ? '<div class="banner info">✓ Signed. Specs locked; manage the build below.</div>'
     : `<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--mid);font-size:13px">Manual fallback — mark as signed without Adobe Sign</summary>
@@ -588,6 +606,7 @@ function tContract(c) {
           <a class="btn secondary" href="/api/clients/${c.id}/contract.pdf" target="_blank">⬇ Preview Contract PDF</a>
           <button class="btn secondary" onclick="sendContract('${c.id}')">📧 Email PDF to Client</button>
         </div>
+        ${docusealSection}
         ${adobeSection}
         ${signedSection}
       </div>
@@ -664,6 +683,21 @@ window.checkAdobeStatus = async function (id) {
     } else {
       toast('Status: ' + r.status);
     }
+  } catch (e) { toast(e.message, true); }
+};
+window.sendViaDocuseal = async function (id) {
+  try {
+    toast('Preparing contract for in-portal signing…');
+    await api('POST', `/api/clients/${id}/contract/docuseal-send`);
+    await reload(); route();
+    toast('Ready — the client can now sign from their portal');
+  } catch (e) { toast(e.message, true); }
+};
+window.checkDocusealStatus = async function (id) {
+  try {
+    const r = await api('POST', `/api/clients/${id}/contract/docuseal-status`);
+    await reload(); route();
+    toast(r.status === 'completed' ? 'Signed! Design phase started' : 'Status: ' + r.status);
   } catch (e) { toast(e.message, true); }
 };
 window.completePhase = async function (id, key) {
@@ -1235,6 +1269,19 @@ function vSettings() {
       </div>
     </div>
     <div class="card" style="max-width:760px">
+      <h2>DocuSeal (In-Portal Signing) ${S.docusealConfigured ? '<span class="chip active">configured</span>' : '<span class="chip prospect">not configured</span>'}</h2>
+      <p class="muted">When configured, the Contract & Phases tab shows an <b>Enable In-Portal Signing</b> button. The contract is sent to DocuSeal and the client signs it directly inside their portal — no email round-trip. The signed PDF is saved to the client's Files automatically.</p>
+      <p class="muted" style="margin-top:0">Get your API key: DocuSeal → Settings → API. For self-hosted DocuSeal, set the base URL to your instance (e.g. https://sign.yourdomain.com/api).</p>
+      <div class="row">
+        <label class="fld grow" style="flex:2">API Key<input type="text" id="dsKey" value="${esc((st.docuseal || {}).apiKey || '')}" placeholder="Paste your DocuSeal API key"></label>
+        <label class="fld grow">API Base URL<input type="text" id="dsBase" value="${esc((st.docuseal || {}).apiBaseUri || 'https://api.docuseal.com')}" placeholder="https://api.docuseal.com"></label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary small" onclick="testDocuseal()">Test Connection</button>
+        <span class="muted" style="font-size:12px;align-self:center">Add a webhook in DocuSeal pointing to <code>${location.origin}/api/webhooks/docuseal</code> for the <b>form.completed</b> event to auto-finalize. Without it, signing still completes when the client finishes in the portal.</span>
+      </div>
+    </div>
+    <div class="card" style="max-width:760px">
       <h2>Haul-Off &amp; Gravel Rates</h2>
       <p class="muted">Default per-unit rates for haul-off and gravel change orders. Pre-filled on each client's Change Orders page and editable per job.</p>
       ${S.marketRates ? `<div class="banner info" style="margin-bottom:12px">
@@ -1391,6 +1438,7 @@ window.settingsSave = async function () {
     gmail: { user: $('#stGUser').value.trim(), appPassword: $('#stGPass').value.trim() },
     quickbooks: { ...S.settings.quickbooks, realmId: $('#qbRealm').value.trim(), environment: $('#qbEnv').value, clientId: $('#qbCid').value.trim(), clientSecret: $('#qbSec').value.trim(), refreshToken: $('#qbTok').value.trim(), achFeeNote: $('#qbAch').value, ccFeeNote: $('#qbCc').value, passFeesToClient: $('#qbPass').checked },
     adobeSign: { integrationKey: $('#asKey').value.trim(), apiBaseUri: $('#asBase').value.trim() || 'https://api.na1.adobesign.com' },
+    docuseal: { apiKey: $('#dsKey').value.trim(), apiBaseUri: $('#dsBase').value.trim() || 'https://api.docuseal.com' },
     haulRates: { triAxle: Number($('#hrTriAxle').value) || 500, gravel: Number($('#hrGravel').value) || 1000 },
     disclosures,
   });
@@ -1401,6 +1449,13 @@ window.testAdobeSign = async function () {
   try {
     const r = await api('POST', '/api/settings/adobe-sign/test');
     toast('Adobe Sign connected ✓' + (r.apiAccessPoint ? ' · API: ' + r.apiAccessPoint : ''));
+  } catch (e) { toast(e.message, true); }
+};
+window.testDocuseal = async function () {
+  await settingsSave();
+  try {
+    await api('POST', '/api/settings/docuseal/test');
+    toast('DocuSeal connected ✓');
   } catch (e) { toast(e.message, true); }
 };
 window.testQuickBooks = async function () {

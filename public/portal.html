@@ -94,6 +94,7 @@
 </style>
 </head>
 <body>
+<script src="https://cdn.docuseal.com/js/form.js"></script>
 <div class="wrap" id="wrap">Loading your project…</div>
 <script>
 const $ = s => document.querySelector(s);
@@ -286,6 +287,14 @@ function renderPortal(d) {
 
     ${d.clientTodos.length ? `<div class="todo"><b>⚠️ Action needed from you:</b><ul>${d.clientTodos.map(t => '<li>' + esc(t.text) + '</li>').join('')}</ul></div>` : ''}
 
+    ${d.signing && d.signing.provider === 'docuseal' ? `
+    <div class="card" id="signCard">
+      <h2>✍️ Sign Your Contract</h2>
+      <p class="muted">Review your contract below and sign securely. Once you sign, your project moves into the Design phase and we'll get started.</p>
+      <div class="pick-saving" id="signStatus"></div>
+      <docuseal-form id="docusealForm" data-src="${esc(d.signing.src)}" data-expand="false"></docuseal-form>
+    </div>` : ''}
+
     <div class="card">
       <h2>Build Tracker</h2>
       <div class="tracker">
@@ -339,6 +348,22 @@ function renderPortal(d) {
     ${finishPicker(d)}
 
     <footer>Infinity Pools · Questions? Just reply to any of our emails — we're happy to help.</footer>`;
+
+  // When the client finishes signing in the embedded DocuSeal form, confirm with
+  // the server (so it works even without a public webhook) and refresh the portal.
+  const form = document.getElementById('docusealForm');
+  if (form) {
+    form.addEventListener('completed', async () => {
+      const st = document.getElementById('signStatus');
+      if (st) st.textContent = '✓ Thank you! Finalizing your contract…';
+      try {
+        const res = await fetch('/api/portal/' + token + '/contract/signed', {
+          method: 'POST', headers: { 'x-portal-session': localStorage.getItem(SESSION_KEY) },
+        });
+        if (res.ok) { const d2 = await res.json(); renderPortal(d2); window.scrollTo(0, 0); }
+      } catch (e) { /* webhook will finalize server-side */ }
+    });
+  }
 }
 
 // Entry point — check for existing session, otherwise show email gate
