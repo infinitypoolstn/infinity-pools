@@ -409,7 +409,7 @@ function tDesign(c) {
   const sel = new Set(c.selectedFinishes || []);
   const tierOrder = ['Standard', 'Upgrade', 'Premium', 'Extra Premium', 'Brilliance'];
   const brands = ['PebbleTec', 'PebbleSheen', 'PebbleFina', 'PebbleBrilliance'];
-  const plasterVal = c.contract.plasterColor || c.contract.adobeFinishSelection || (c.selectedFinishes || [])[0] || '';
+  const plasterVal = c.contract.plasterColor || (c.selectedFinishes || [])[0] || '';
   $('#tabBody').innerHTML = `
     <div class="card" style="max-width:760px;margin-bottom:14px">
       <h2>Project Selections</h2>
@@ -420,7 +420,7 @@ function tDesign(c) {
       </div>
       <button class="btn" onclick="saveSelections('${c.id}')">💾 Save Selections</button>
     </div>
-    <div class="banner info">Click swatches to record the client's finish selections (these appear on the contract, the portal, and can be confirmed by checkbox during Adobe signing). Grouped by pricing tier — prices are never shown to the client.</div>
+    <div class="banner info">Click swatches to record the client's finish selections (these appear on the contract and the portal; the client can also choose their own finish from the portal). Grouped by pricing tier — prices are never shown to the client.</div>
     ${brands.map(brand => {
       const tiers = tierOrder.filter(t => S.finishes.some(f => f.active && f.brand === brand && f.tier === t));
       if (!tiers.length) return '';
@@ -549,23 +549,6 @@ window.emailFiles = function (id) {
 function tContract(c) {
   const total = c._quote;
 
-  // Adobe Sign status card — computed before the template literal to avoid deep nesting
-  let adobeSection;
-  if (!S.adobeSignConfigured) {
-    adobeSection = `<p class="muted" style="margin-top:10px"><a href="#/settings">Configure Adobe Sign in Settings</a> to send for e-signature with Pebble Tec finish selection.</p>`;
-  } else if (c.contract.signedAt && c.contract.signedMethod === 'adobe') {
-    const fin = c.contract.adobeFinishSelection ? ` · Finish: <b>${esc(c.contract.adobeFinishSelection)}</b>` : '';
-    adobeSection = `<div class="banner info">✅ Signed via Adobe Sign${fin}.</div>`;
-  } else if (c.contract.adobeAgreementId) {
-    const chips = { IN_PROCESS: '<span class="chip prospect">Awaiting Signature</span>', SIGNED: '<span class="chip active">Signed</span>', RECALLED: '<span class="chip lost">Recalled</span>', EXPIRED: '<span class="chip lost">Expired</span>' };
-    const chip = chips[c.contract.adobeStatus] || '<span class="chip prospect">Pending</span>';
-    const sent = c.contract.adobeSentAt ? `Sent ${fmtDate(c.contract.adobeSentAt)}` : '';
-    adobeSection = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">${chip}<span class="muted">${sent}</span><button class="btn secondary small" onclick="checkAdobeStatus('${c.id}')">↻ Check Signing Status</button></div>`;
-  } else {
-    const dis = c.email ? '' : 'disabled title="Client has no email address"';
-    adobeSection = `<div style="margin-top:10px"><button class="btn" onclick="sendViaAdobeSign('${c.id}')" ${dis}>📨 Send via Adobe Sign</button><p class="muted" style="margin-top:6px">Uploads the contract PDF to your Adobe Sign account and emails the client a signing link. The Pebble Tec finish selection field on the signature page becomes a required text field the client fills in before signing.</p></div>`;
-  }
-
   // DocuSeal in-portal signing section
   let docusealSection;
   if (!S.docusealConfigured) {
@@ -586,10 +569,10 @@ function tContract(c) {
 
   const signedSection = c.contract.signedAt
     ? '<div class="banner info">✓ Signed. Specs locked; manage the build below.</div>'
-    : `<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--mid);font-size:13px">Manual fallback — mark as signed without Adobe Sign</summary>
+    : `<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--mid);font-size:13px">Manual fallback — mark as signed outside the portal</summary>
         <div style="margin-top:10px">
           <div class="row" style="align-items:flex-end">
-            <label class="fld grow">How was it signed?<select id="signMethod"><option value="adobe">Adobe digital signature</option><option value="paper">Paper (in person)</option></select></label>
+            <label class="fld grow">How was it signed?<select id="signMethod"><option value="digital">Digital signature (emailed back)</option><option value="paper">Paper (in person)</option></select></label>
             <label class="fld grow">Deposit taken now?<select id="depMethod"><option value="">No — send payment link</option><option value="check">Yes — check</option><option value="cash">Yes — cash</option></select></label>
             <button class="btn green" style="margin-bottom:12px" onclick="markSigned('${c.id}')">✓ Contract Signed</button>
           </div>
@@ -607,7 +590,6 @@ function tContract(c) {
           <button class="btn secondary" onclick="sendContract('${c.id}')">📧 Email PDF to Client</button>
         </div>
         ${docusealSection}
-        ${adobeSection}
         ${signedSection}
       </div>
       <div class="card grow" style="min-width:300px;max-width:430px">
@@ -664,25 +646,6 @@ window.createQbInvoice = async function (id) {
     await api('POST', `/api/clients/${id}/quickbooks/create-invoice`);
     await reload(); route();
     toast('QuickBooks customer and master estimate created successfully');
-  } catch (e) { toast(e.message, true); }
-};
-window.sendViaAdobeSign = async function (id) {
-  try {
-    toast('Uploading PDF to Adobe Sign…');
-    const r = await api('POST', `/api/clients/${id}/contract/adobe-send`);
-    await reload(); route();
-    toast('Contract sent via Adobe Sign — client will receive a signing email');
-  } catch (e) { toast(e.message, true); }
-};
-window.checkAdobeStatus = async function (id) {
-  try {
-    const r = await api('POST', `/api/clients/${id}/contract/check-adobe-status`);
-    await reload(); route();
-    if (r.status === 'SIGNED') {
-      toast('Signed! Design phase started' + (r.finishSelection ? ' · Finish: ' + r.finishSelection : '') + (r.quickbooksError ? ' (QB error: ' + r.quickbooksError + ')' : ''));
-    } else {
-      toast('Status: ' + r.status);
-    }
   } catch (e) { toast(e.message, true); }
 };
 window.sendViaDocuseal = async function (id) {
@@ -1255,20 +1218,6 @@ function vSettings() {
       </div>
     </div>
     <div class="card" style="max-width:760px">
-      <h2>Adobe Acrobat Sign ${S.adobeSignConfigured ? '<span class="chip active">configured</span>' : '<span class="chip prospect">not configured</span>'}</h2>
-      <p class="muted">When configured, the Contract & Phases tab shows a <b>Send via Adobe Sign</b> button. The contract PDF is uploaded to your Adobe Sign account and the client receives an email with a signing link. The Pebble Tec finish selection field in the contract becomes a required text field in the signing form — the client's choice is captured automatically when they sign.</p>
-      <p class="muted" style="margin-top:0">Get your Integration Key: Adobe Sign → Account → Personal Preferences → API Access → Integration Keys. Create a key with <b>account_read</b>, <b>agreement_send</b>, <b>agreement_read</b>, <b>agreement_write</b> scopes.</p>
-      <div class="row">
-        <label class="fld grow" style="flex:2">Integration Key<input type="text" id="asKey" value="${esc((st.adobeSign || {}).integrationKey || '')}" placeholder="Paste your long-lived Integration Key here"></label>
-        <label class="fld grow">API Base URL<input type="text" id="asBase" value="${esc((st.adobeSign || {}).apiBaseUri || 'https://api.na1.adobesign.com')}" placeholder="https://api.na1.adobesign.com"></label>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn secondary small" onclick="testAdobeSign()">Test Connection</button>
-        <button class="btn secondary small" onclick="registerAdobeWebhook()">Register Webhook</button>
-        <span class="muted" style="font-size:12px;align-self:center">Webhooks auto-process signed contracts. Requires a public URL — works on Render/Railway, not localhost. Without it, use "Check Signing Status" on the Contract tab.</span>
-      </div>
-    </div>
-    <div class="card" style="max-width:760px">
       <h2>DocuSeal (In-Portal Signing) ${S.docusealConfigured ? '<span class="chip active">configured</span>' : '<span class="chip prospect">not configured</span>'}</h2>
       <p class="muted">When configured, the Contract & Phases tab shows an <b>Enable In-Portal Signing</b> button. The contract is sent to DocuSeal and the client signs it directly inside their portal — no email round-trip. The signed PDF is saved to the client's Files automatically.</p>
       <p class="muted" style="margin-top:0">Get your API key: DocuSeal → Settings → API. For self-hosted DocuSeal, set the base URL to your instance (e.g. https://sign.yourdomain.com/api).</p>
@@ -1437,19 +1386,11 @@ window.settingsSave = async function () {
     companyPhone: $('#stPhone').value, companyAddress: $('#stAddr').value,
     gmail: { user: $('#stGUser').value.trim(), appPassword: $('#stGPass').value.trim() },
     quickbooks: { ...S.settings.quickbooks, realmId: $('#qbRealm').value.trim(), environment: $('#qbEnv').value, clientId: $('#qbCid').value.trim(), clientSecret: $('#qbSec').value.trim(), refreshToken: $('#qbTok').value.trim(), achFeeNote: $('#qbAch').value, ccFeeNote: $('#qbCc').value, passFeesToClient: $('#qbPass').checked },
-    adobeSign: { integrationKey: $('#asKey').value.trim(), apiBaseUri: $('#asBase').value.trim() || 'https://api.na1.adobesign.com' },
     docuseal: { apiKey: $('#dsKey').value.trim(), apiBaseUri: $('#dsBase').value.trim() || 'https://api.docuseal.com' },
     haulRates: { triAxle: Number($('#hrTriAxle').value) || 500, gravel: Number($('#hrGravel').value) || 1000 },
     disclosures,
   });
   await reload(); toast('Settings saved'); route();
-};
-window.testAdobeSign = async function () {
-  await settingsSave();
-  try {
-    const r = await api('POST', '/api/settings/adobe-sign/test');
-    toast('Adobe Sign connected ✓' + (r.apiAccessPoint ? ' · API: ' + r.apiAccessPoint : ''));
-  } catch (e) { toast(e.message, true); }
 };
 window.testDocuseal = async function () {
   await settingsSave();
@@ -1464,13 +1405,6 @@ window.testQuickBooks = async function () {
     const r = await api('POST', '/api/settings/quickbooks/test');
     if (r.ok) toast('QuickBooks connected ✓' + (r.companyName ? ' · ' + r.companyName : ''));
     else toast(r.error, true);
-  } catch (e) { toast(e.message, true); }
-};
-window.registerAdobeWebhook = async function () {
-  await settingsSave();
-  try {
-    const r = await api('POST', '/api/settings/adobe-sign/register-webhook');
-    toast('Webhook registered → ' + r.webhookUrl);
   } catch (e) { toast(e.message, true); }
 };
 window.testEmail = async function () {
@@ -1497,8 +1431,8 @@ function vEula() {
         <h2>3. QuickBooks Integration</h2>
         <p>The App may connect to QuickBooks Online via OAuth 2.0 to sync invoicing and customer data. This data is used solely for display and operational purposes within the App. You may revoke this access at any time through your QuickBooks account settings.</p>
 
-        <h2>4. Adobe Sign Integration</h2>
-        <p>The App may connect to Adobe Acrobat Sign to facilitate electronic contract signing. Documents transmitted through this integration are governed by Adobe's terms of service. Infinity Pools is not responsible for Adobe Sign's availability or performance.</p>
+        <h2>4. DocuSeal Integration</h2>
+        <p>The App may connect to DocuSeal to facilitate electronic contract signing. Documents transmitted through this integration are governed by DocuSeal's terms of service. Infinity Pools is not responsible for DocuSeal's availability or performance.</p>
 
         <h2>5. No Warranty</h2>
         <p>THE APP IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND. INFINITY POOLS DOES NOT WARRANT THAT THE APP WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE.</p>
@@ -1544,10 +1478,10 @@ function vPrivacy() {
         <p>When you authorize QuickBooks Online access, we retrieve invoicing and customer data via OAuth 2.0. This data is used solely for display within the App and is not stored beyond operational needs. You may disconnect QuickBooks at any time through your QuickBooks account settings.</p>
 
         <h2>6. Your Rights</h2>
-        <p>You may request access to, correction of, or deletion of your data at any time by contacting us. You may also revoke any third-party integration permissions (QuickBooks, Adobe Sign) through those services directly.</p>
+        <p>You may request access to, correction of, or deletion of your data at any time by contacting us. You may also revoke any third-party integration permissions (QuickBooks, DocuSeal) through those services directly.</p>
 
         <h2>7. Third-Party Services</h2>
-        <p>The App integrates with Intuit QuickBooks and Adobe Acrobat Sign. These services have their own privacy policies that govern their data practices independently of this policy.</p>
+        <p>The App integrates with Intuit QuickBooks and DocuSeal. These services have their own privacy policies that govern their data practices independently of this policy.</p>
 
         <h2>8. Policy Updates</h2>
         <p>We may update this Privacy Policy from time to time. Changes take effect upon posting. Continued use of the App after changes are posted constitutes acceptance of the updated policy.</p>

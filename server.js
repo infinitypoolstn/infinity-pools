@@ -13,7 +13,6 @@ const alerts = require('./lib/alerts');
 const pebble = require('./lib/pebble-check');
 const contractPdf = require('./lib/contract-pdf');
 const quickbooks = require('./lib/quickbooks');
-const adobeSign = require('./lib/adobe-sign');
 const docuseal = require('./lib/docuseal');
 const { extractInvoiceTotal } = require('./lib/invoice-amount');
 
@@ -25,14 +24,14 @@ store.load();
 
 const app = express();
 
-// Basic Auth — protects all routes except the client portal and Adobe Sign webhooks.
+// Basic Auth — protects all routes except the client portal and DocuSeal webhooks.
 // Set APP_USER and APP_PASS environment variables. Defaults allow local dev without credentials.
 const APP_USER = process.env.APP_USER || '';
 const APP_PASS = process.env.APP_PASS || '';
 if (APP_USER && APP_PASS) {
-  // Public (no Basic Auth): health check, client portal + its API, Adobe Sign webhooks,
+  // Public (no Basic Auth): health check, client portal + its API, DocuSeal webhooks,
   // and the finish swatch images the portal displays. /uploads (contracts, invoices) stays protected.
-  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/adobe-sign', '/api/webhooks/docuseal', '/swatches/'];
+  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/docuseal', '/swatches/'];
   app.use((req, res, next) => {
     if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
     const auth = req.headers.authorization;
@@ -141,7 +140,6 @@ app.get('/api/bootstrap', (req, res) => {
     errorLog: (d.errorLog || []).slice(0, 100),
     gmailConfigured: mailer.configured(),
     quickbooksConnected: quickbooks.connected(),
-    adobeSignConfigured: adobeSign.configured(store.data.settings),
     docusealConfigured: docuseal.configured(store.data.settings),
     clients: d.clients.map(c => ({
       ...c,
@@ -257,7 +255,7 @@ app.post('/api/clients/:id/contract/send', wrap(async (req, res) => {
     subject: `Your Infinity Pools contract — ${c.address}`,
     html: `<p>Hi ${c.name.split(' ')[0]},</p>
       <p>Attached is your pool construction proposal and contract for <b>${c.address}</b>, totaling <b>${alerts.fmtMoney(store.quoteTotal(c))}</b>.</p>
-      <p>We'll follow up with a request for your digital signature through Adobe Acrobat Sign. When you sign, you'll also be able to confirm your interior finish color selections right on the signing form.</p>
+      <p>When you're ready, you can review and sign the contract securely right inside your project portal — we'll send you the link. You'll also be able to choose your interior finish color there.</p>
       <p>Once signed, your project moves into the Design phase and we'll send your first invoice through QuickBooks.</p>
       <p>Questions? Just reply to this email.</p><p>— Infinity Pools</p>`,
     attachments: [{ filename: `${c.address} - Infinity Pools Contract.pdf`, path: file }],
@@ -269,8 +267,8 @@ app.post('/api/clients/:id/contract/send', wrap(async (req, res) => {
   res.json({ client: c, email: rec });
 }));
 
-// Shared "contract is now signed" flow, used by manual mark-signed, Adobe Sign,
-// and DocuSeal: locks specs + pricing, starts the Design phase, creates the QBO
+// Shared "contract is now signed" flow, used by manual mark-signed and DocuSeal:
+// locks specs + pricing, starts the Design phase, creates the QBO
 // estimate, alerts the team, and either records an in-person deposit or sends the
 // design-draw payment request. Returns { qb, qbError }.
 async function finalizeContractSigning(c, { method, depositMethod = null, finishText = null, note = '' }) {
@@ -318,100 +316,14 @@ async function finalizeContractSigning(c, { method, depositMethod = null, finish
   return { qb, qbError };
 }
 
-// Accept/sign: works for Adobe-signed and paper. Locks specs + pricing, starts
-// Design phase, sends design draw payment request, creates QBO invoice if connected.
+// Manual fallback: mark a contract signed outside the system (paper, or a signed
+// PDF emailed back). Locks specs + pricing, starts Design phase, sends design draw
+// payment request, creates QBO invoice if connected.
 app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
-  const { method = 'adobe', depositMethod = null } = req.body; // method: adobe|paper, depositMethod: check|cash|null
+  const { method = 'manual', depositMethod = null } = req.body; // method: digital|paper, depositMethod: check|cash|null
   const { qb, qbError } = await finalizeContractSigning(c, { method, depositMethod });
   res.json({ client: c, quickbooksInvoice: qb, quickbooksError: qbError });
-}));
-
-// ---------------------------------------------------------------------------
-// Adobe Acrobat Sign
-// ---------------------------------------------------------------------------
-
-// Shared helper: runs the full "contract signed" flow after Adobe Sign reports SIGNED.
-async function processAdobeSigning(c, agreementId) {
-  const csv = await adobeSign.getFormData(agreementId, store.data.settings);
-  const finish = adobeSign.parseFinishFromFormData(csv);
-  if (finish) c.contract.adobeFinishSelection = finish;
-  c.contract.adobeStatus = 'SIGNED';
-  const { qbError } = await finalizeContractSigning(c, { method: 'adobe', finishText: finish, note: finish ? ' Finish: ' + finish : '' });
-  return { finish, qbError };
-}
-
-// Generate PDF and send to client via Adobe Sign for e-signature.
-app.post('/api/clients/:id/contract/adobe-send', wrap(async (req, res) => {
-  const c = getClient(req, res); if (!c) return;
-  if (!c.email) return res.status(400).json({ error: 'Client has no email address on file' });
-  if (!adobeSign.configured(store.data.settings)) return res.status(400).json({ error: 'Adobe Sign is not configured — add your Integration Key in Settings' });
-  const pdfPath = await contractPdf.generate(c, { uploadsDir: UPLOADS_DIR });
-  const transientDocId = await adobeSign.uploadDocument(pdfPath, store.data.settings);
-  const agreement = await adobeSign.createAgreement(c, transientDocId, store.data.settings);
-  c.contract.adobeAgreementId = agreement.id;
-  c.contract.adobeStatus = 'IN_PROCESS';
-  c.contract.adobeSentAt = new Date().toISOString();
-  if (c.status === 'prospect') c.status = 'contract_sent';
-  store.addAlert(`Contract sent via Adobe Sign to ${c.name} (${c.email})`, { clientId: c.id });
-  store.save();
-  res.json({ client: c, agreementId: agreement.id });
-}));
-
-// Poll Adobe Sign for current status; auto-process if signed.
-app.post('/api/clients/:id/contract/check-adobe-status', wrap(async (req, res) => {
-  const c = getClient(req, res); if (!c) return;
-  if (!c.contract.adobeAgreementId) return res.status(400).json({ error: 'No Adobe Sign agreement found for this client' });
-  if (!adobeSign.configured(store.data.settings)) return res.status(400).json({ error: 'Adobe Sign is not configured' });
-  const agreement = await adobeSign.getAgreement(c.contract.adobeAgreementId, store.data.settings);
-  c.contract.adobeStatus = agreement.status;
-  if (agreement.status === 'SIGNED' && !c.contract.signedAt) {
-    const { finish, qbError } = await processAdobeSigning(c, c.contract.adobeAgreementId);
-    return res.json({ client: c, status: 'SIGNED', finishSelection: finish, quickbooksError: qbError });
-  }
-  store.save();
-  res.json({ client: c, status: agreement.status });
-}));
-
-// Webhook verification — Adobe Sign sends a GET first to confirm the endpoint is live.
-app.get('/api/webhooks/adobe-sign', (req, res) => res.json({ ok: true }));
-
-// Webhook event — Adobe Sign POSTs here on AGREEMENT_WORKFLOW_COMPLETE.
-// Requires a publicly accessible URL (works on Render/Railway; not reachable at localhost).
-app.post('/api/webhooks/adobe-sign', wrap(async (req, res) => {
-  res.json({ ok: true }); // acknowledge immediately; process async
-  const event = req.body;
-  if (!event || event.event !== 'AGREEMENT_WORKFLOW_COMPLETE') return;
-  const agreementId = event.agreementId;
-  if (!agreementId) return;
-  const c = store.data.clients.find(c => c.contract.adobeAgreementId === agreementId);
-  if (!c || c.contract.signedAt) return; // unknown or already processed
-  try {
-    await processAdobeSigning(c, agreementId);
-  } catch (e) {
-    store.addAlert('Adobe Sign webhook error: ' + e.message, { type: 'error' });
-    store.save();
-    console.error('Adobe Sign webhook:', e);
-  }
-}));
-
-// Test Adobe Sign credentials.
-app.post('/api/settings/adobe-sign/test', wrap(async (req, res) => {
-  if (!adobeSign.configured(store.data.settings)) return res.status(400).json({ error: 'Adobe Sign credentials not saved yet' });
-  const url = store.data.settings.adobeSign.apiBaseUri.replace(/\/$/, '') + '/api/rest/v6/baseUris';
-  const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + store.data.settings.adobeSign.integrationKey } });
-  const text = await r.text();
-  let json; try { json = JSON.parse(text); } catch (e) { json = {}; }
-  if (!r.ok) return res.status(400).json({ error: json.message || json.code || `HTTP ${r.status} — check your Integration Key and API URL` });
-  res.json({ ok: true, apiAccessPoint: json.apiAccessPoint });
-}));
-
-// Register an Adobe Sign webhook pointing to this server (requires public URL).
-app.post('/api/settings/adobe-sign/register-webhook', wrap(async (req, res) => {
-  if (!adobeSign.configured(store.data.settings)) return res.status(400).json({ error: 'Adobe Sign credentials not saved yet' });
-  const webhookUrl = `${req.protocol}://${req.get('host')}/api/webhooks/adobe-sign`;
-  const result = await adobeSign.registerWebhook(webhookUrl, store.data.settings);
-  res.json({ ok: true, webhookUrl, result });
 }));
 
 // ---------------------------------------------------------------------------
@@ -824,7 +736,7 @@ app.get('/api/portal/:token', (req, res) => {
 });
 
 // Client finished signing in the portal — confirm with DocuSeal and finalize.
-// Lets signing complete even without a public webhook (mirrors Adobe's poll).
+// Lets signing complete even without a public webhook (a status poll).
 app.post('/api/portal/:token/contract/signed', wrap(async (req, res) => {
   const c = portalClient(req, res); if (!c) return;
   if (c.contract.signedAt) return res.json(publicClientView(c));
