@@ -102,6 +102,11 @@ function publicClientView(c) {
     })),
     clientTodos: (c.clientTodos || []).filter(t => !t.done),
     contractSigned: !!c.contract.signedAt,
+    contractSignedAt: c.contract.signedAt || null,
+    contractSentAt: c.contract.sentAt || null,
+    // The client can always view their contract PDF once it exists (sent, ready
+    // to sign, or signed).
+    contractViewable: !!(c.contract.sentAt || c.contract.signedAt || c.contract.docusealStatus === 'pending'),
     // Embedded DocuSeal signing form, shown while a submission is pending.
     signing: (!c.contract.signedAt && c.contract.docusealEmbedSrc && c.contract.docusealStatus === 'pending')
       ? { provider: 'docuseal', src: c.contract.docusealEmbedSrc }
@@ -734,6 +739,19 @@ app.get('/api/portal/:token', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
   res.json(publicClientView(c));
 });
+
+// Client views their contract PDF from the portal (session-authenticated). Serves
+// the signed copy if one has been saved, otherwise the current generated contract.
+app.get('/api/portal/:token/contract.pdf', wrap(async (req, res) => {
+  const c = portalClient(req, res); if (!c) return;
+  const signed = (c.files || []).find(f => f.category === 'Signed Contract');
+  if (signed) {
+    const p = path.join(UPLOADS_DIR, c.id, signed.storedName);
+    if (fs.existsSync(p)) return res.type('application/pdf').sendFile(p);
+  }
+  const file = await contractPdf.generate(c, { uploadsDir: UPLOADS_DIR });
+  res.type('application/pdf').sendFile(file);
+}));
 
 // Client finished signing in the portal — confirm with DocuSeal and finalize.
 // Lets signing complete even without a public webhook (a status poll).

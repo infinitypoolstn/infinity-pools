@@ -74,6 +74,9 @@
   .fin.pickable.sel .nm { color:var(--blue); }
   .pick-hint { color:var(--mid); font-size:13px; margin:-4px 0 4px; }
   .pick-saving { color:var(--blue); font-size:13px; font-weight:700; min-height:18px; margin-top:8px; }
+  .viewbtn { background:var(--blue); color:#fff; border:none; padding:11px 20px; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .viewbtn:hover { background:var(--blue-dark); }
+  .banner-ok { background:#e7f6ec; border:1px solid #bfe6cc; color:var(--green); border-radius:10px; padding:12px 16px; font-weight:700; }
 
   svg .raise { transition:all 1s ease; }
   footer { text-align:center; margin-top:28px; color:var(--mid); font-size:12.5px; }
@@ -244,6 +247,27 @@ function finishPicker(d) {
     </div>`;
 }
 
+// View the contract PDF. Fetches with the portal session header (so a plain link
+// won't work) and opens the PDF as a blob in a new tab.
+window.viewContract = async function () {
+  const st = document.getElementById('contractStatus');
+  if (st) st.textContent = 'Opening…';
+  try {
+    const res = await fetch('/api/portal/' + token + '/contract.pdf', {
+      headers: { 'x-portal-session': localStorage.getItem(SESSION_KEY) },
+    });
+    if (res.status === 401) { localStorage.removeItem(SESSION_KEY); showEmailGate(); return; }
+    if (!res.ok) throw new Error();
+    const url = URL.createObjectURL(await res.blob());
+    const w = window.open(url, '_blank');
+    if (!w) { // popup blocked — fall back to a download
+      const a = document.createElement('a');
+      a.href = url; a.download = 'Infinity Pools Contract.pdf'; a.click();
+    }
+    if (st) st.textContent = '';
+  } catch (e) { if (st) st.textContent = 'Could not open the contract — please try again.'; }
+};
+
 window.selectFinish = async function (name) {
   const sessionId = localStorage.getItem(SESSION_KEY);
   const saving = document.getElementById('pickSaving');
@@ -287,12 +311,21 @@ function renderPortal(d) {
 
     ${d.clientTodos.length ? `<div class="todo"><b>⚠️ Action needed from you:</b><ul>${d.clientTodos.map(t => '<li>' + esc(t.text) + '</li>').join('')}</ul></div>` : ''}
 
-    ${d.signing && d.signing.provider === 'docuseal' ? `
-    <div class="card" id="signCard">
-      <h2>✍️ Sign Your Contract</h2>
-      <p class="muted">Review your contract below and sign securely. Once you sign, your project moves into the Design phase and we'll get started.</p>
-      <div class="pick-saving" id="signStatus"></div>
-      <docuseal-form id="docusealForm" data-src="${esc(d.signing.src)}" data-expand="false"></docuseal-form>
+    ${(d.contractViewable || d.signing) ? `
+    <div class="card" id="contractCard">
+      <h2>📄 Your Contract</h2>
+      ${d.contractSigned
+        ? `<div class="banner-ok">✓ Signed${d.contractSignedAt ? ' on ' + fmtDate(d.contractSignedAt) : ''} — thank you!</div>`
+        : d.signing
+          ? `<p class="muted">Please review your contract below and sign securely. Once you sign, your project moves into the Design phase and we'll get started.</p>`
+          : `<p class="muted">Your contract is ready to review. We'll let you know when it's ready to sign.</p>`}
+      <div style="margin:10px 0">
+        <button class="viewbtn" onclick="viewContract()">📄 View My Contract (PDF)</button>
+        <span class="pick-saving" id="contractStatus" style="margin-left:10px"></span>
+      </div>
+      ${d.signing && d.signing.provider === 'docuseal' ? `
+        <div class="pick-saving" id="signStatus"></div>
+        <docuseal-form id="docusealForm" data-src="${esc(d.signing.src)}" data-expand="false"></docuseal-form>` : ''}
     </div>` : ''}
 
     <div class="card">
