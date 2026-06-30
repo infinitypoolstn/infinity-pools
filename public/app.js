@@ -601,12 +601,12 @@ function tContract(c) {
       <div class="card grow" style="min-width:300px;max-width:430px">
         <h2>QuickBooks</h2>
         ${S.quickbooksConnected ? '<span class="chip active">Connected</span>' : '<p class="muted">Not connected — payment links can still be pasted per phase below. Connect in <a href="#/settings">Settings</a>.</p>'}
-        ${c.quickbooks.estimateUrl
-          ? `<p style="margin-top:10px">Contract estimate: <a href="${c.quickbooks.estimateUrl}" target="_blank">open in QuickBooks ↗</a></p>
-             <p class="muted" style="font-size:12px">Each phase draw is billed as its own progress invoice against this estimate when its payment is requested.</p>`
+        ${c.quickbooks.invoiceUrl
+          ? `<p style="margin-top:10px">Master invoice: <a href="${c.quickbooks.invoiceUrl}" target="_blank">open in QuickBooks ↗</a></p>
+             <p class="muted" style="font-size:12px">One invoice for the full contract. Each phase draw is requested as a partial payment against it — no additional invoices are created.</p>`
           : S.quickbooksConnected && c.contract.signedAt
-            ? `<div class="banner warn" style="margin-top:10px">Master estimate was not created — this usually means the QuickBooks connection needs attention.</div>
-               <button class="btn" style="margin-top:10px" onclick="createQbInvoice('${c.id}')">Create QB Customer &amp; Estimate</button>`
+            ? `<div class="banner warn" style="margin-top:10px">Master invoice was not created — this usually means the QuickBooks connection needs attention.</div>
+               <button class="btn" style="margin-top:10px" onclick="createQbInvoice('${c.id}')">Create QB Customer &amp; Invoice</button>`
             : ''}
       </div>
     </div>
@@ -647,11 +647,11 @@ window.markSigned = async function (id) {
   } catch (e) { toast(e.message, true); }
 };
 window.createQbInvoice = async function (id) {
-  if (!confirm('Create QuickBooks customer and master estimate now?')) return;
+  if (!confirm('Create QuickBooks customer and master invoice now?')) return;
   try {
     await api('POST', `/api/clients/${id}/quickbooks/create-invoice`);
     await reload(); route();
-    toast('QuickBooks customer and master estimate created successfully');
+    toast('QuickBooks customer and master invoice created successfully');
   } catch (e) { toast(e.message, true); }
 };
 window.sendViaDocuseal = async function (id) {
