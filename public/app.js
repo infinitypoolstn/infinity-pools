@@ -1273,6 +1273,11 @@ function vSettings() {
       <button class="btn secondary" onclick="ttAddPhase()">＋ Add Phase Section</button>
       <p class="muted" style="font-size:12px;margin-top:6px">New phase sections are added to your standard phase list at a 0% draw (no change to the payment schedule) and apply to newly created projects.</p>
     </div>
+    <div class="card" style="max-width:760px">
+      <h2>Sales Rep Forms</h2>
+      <p class="muted">A blank, fillable PDF that mirrors the Pool Specs page — Owner/Builder, address, every pool spec field, and a Notes area. Send it to a rep to complete on-site (type into it or print &amp; hand-write), then use it to enter the specs here.</p>
+      <a class="btn secondary" href="/api/forms/pool-spec-intake.pdf" target="_blank">⬇ Pool Spec Intake Form (PDF)</a>
+    </div>
     <div class="card" style="max-width:860px">
       <h2>Scope of Work (master template)</h2>
       <p class="muted">The default Scope of Work copied into every new project's contract. You can still edit any individual client's scope on their <b>Scope of Work</b> tab without changing this master.</p>

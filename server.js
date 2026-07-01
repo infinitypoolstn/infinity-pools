@@ -12,6 +12,7 @@ const mailer = require('./lib/mailer');
 const alerts = require('./lib/alerts');
 const pebble = require('./lib/pebble-check');
 const contractPdf = require('./lib/contract-pdf');
+const specIntakePdf = require('./lib/spec-intake-pdf');
 const quickbooks = require('./lib/quickbooks');
 const docuseal = require('./lib/docuseal');
 const { extractInvoiceTotal } = require('./lib/invoice-amount');
@@ -246,6 +247,13 @@ app.post('/api/clients/:id/phases/:key/request-payment', wrap(async (req, res) =
 // ---------------------------------------------------------------------------
 // Contract lifecycle
 // ---------------------------------------------------------------------------
+// Blank, fillable Pool Specs intake form to hand to a sales rep. Not tied to a
+// client — it's a reusable template.
+app.get('/api/forms/pool-spec-intake.pdf', wrap(async (req, res) => {
+  const file = await specIntakePdf.generate();
+  res.download(file, 'Infinity Pools - Pool Spec Intake Form.pdf');
+}));
+
 app.get('/api/clients/:id/contract.pdf', wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
   const file = await contractPdf.generate(c, { uploadsDir: UPLOADS_DIR });
