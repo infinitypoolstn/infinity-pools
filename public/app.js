@@ -124,6 +124,15 @@ function vDashboard() {
 
 window.addProspect = function () {
   modal(`<h2>Add New Prospect</h2>
+    <div class="card" style="background:var(--blue-pale);margin-bottom:14px">
+      <b>Have a filled Sales Rep Form?</b>
+      <p class="muted" style="margin:4px 0 8px">Upload the completed PDF to create the project with its contact info and Pool Specs pre-filled — you can review and edit everything after.</p>
+      <div class="row" style="align-items:center;gap:8px">
+        <input type="file" id="pIntake" accept="application/pdf" class="grow">
+        <button class="btn secondary small" id="pIntakeBtn">⬆ Upload &amp; Create</button>
+      </div>
+    </div>
+    <p class="muted" style="margin:0 0 8px">…or enter the details manually:</p>
     <label class="fld">Client Name<input type="text" id="pName" placeholder="John & Jane Smith"></label>
     <label class="fld">Address<input type="text" id="pAddr" placeholder="1533 Harding Pl, Nashville TN"></label>
     <label class="fld">Email<input type="email" id="pEmail"></label>
@@ -132,6 +141,19 @@ window.addProspect = function () {
       <button class="btn secondary" onclick="closeModal()">Cancel</button>
       <button class="btn" id="pSave">Save & Open Client Page</button>
     </div>`, root => {
+    root.querySelector('#pIntakeBtn').onclick = async () => {
+      const f = $('#pIntake').files[0];
+      if (!f) return toast('Choose a completed PDF first', true);
+      const btn = root.querySelector('#pIntakeBtn');
+      btn.disabled = true; btn.textContent = 'Reading form…';
+      try {
+        const fd = new FormData(); fd.append('file', f);
+        const c = await api('POST', '/api/prospects/from-intake', fd);
+        await reload(); closeModal();
+        location.hash = '#/client/' + c.id;
+        toast('Project created from form — review the Pool Specs');
+      } catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = '⬆ Upload & Create'; }
+    };
     root.querySelector('#pSave').onclick = async () => {
       const name = $('#pName').value.trim();
       if (!name) return toast('Client name is required', true);

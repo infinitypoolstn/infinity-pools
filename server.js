@@ -13,6 +13,7 @@ const alerts = require('./lib/alerts');
 const pebble = require('./lib/pebble-check');
 const contractPdf = require('./lib/contract-pdf');
 const specIntakePdf = require('./lib/spec-intake-pdf');
+const specIntakeParse = require('./lib/spec-intake-parse');
 const quickbooks = require('./lib/quickbooks');
 const docuseal = require('./lib/docuseal');
 const { extractInvoiceTotal } = require('./lib/invoice-amount');
@@ -168,6 +169,27 @@ app.post('/api/clients', (req, res) => {
   store.save();
   res.json(c);
 });
+
+// Create a prospect from a filled Sales Rep Form (Pool Spec intake PDF): parse the
+// AcroForm fields and pre-populate the client's contact info + Pool Specs.
+const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+app.post('/api/prospects/from-intake', memUpload.single('file'), wrap(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No PDF uploaded.' });
+  let parsed;
+  try {
+    parsed = await specIntakeParse.parseIntake(req.file.buffer);
+  } catch (e) {
+    return res.status(422).json({ error: 'Could not read the form: ' + e.message });
+  }
+  const c = store.newClient({ name: parsed.name, address: parsed.address, email: parsed.email, phone: parsed.phone });
+  c.specs = parsed.specs;
+  c.finance = store.specsToFinance(parsed.specs);
+  if (parsed.notes) c.notes = parsed.notes;
+  store.data.clients.push(c);
+  store.addAlert(`New prospect from intake form: ${c.name || 'Unnamed'} — ${c.address || 'no address'}`, { clientId: c.id });
+  store.save();
+  res.json(c);
+}));
 
 app.put('/api/clients/:id', (req, res) => {
   const c = getClient(req, res); if (!c) return;
