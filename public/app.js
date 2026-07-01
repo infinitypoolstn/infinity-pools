@@ -76,7 +76,10 @@ function vDashboard() {
   $('#main').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <h1 style="margin:0">Dashboard</h1>
-      <button class="btn" onclick="addProspect()">＋ Add New Prospect</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn secondary" href="/api/forms/pool-spec-intake.pdf" target="_blank" title="Blank, fillable Pool Specs form to send to a sales rep">⬇ Sales Rep Form</a>
+        <button class="btn" onclick="addProspect()">＋ Add New Prospect</button>
+      </div>
     </div>
     ${!S.gmailConfigured ? '<div class="banner warn" style="margin-top:14px">📧 Gmail is not connected yet — emails are logged but not sent. Set it up in <a href="#/settings">Settings → Email</a>.</div>' : ''}
     <div class="row" style="margin:16px 0">
@@ -1272,11 +1275,6 @@ function vSettings() {
       </div>
       <button class="btn secondary" onclick="ttAddPhase()">＋ Add Phase Section</button>
       <p class="muted" style="font-size:12px;margin-top:6px">New phase sections are added to your standard phase list at a 0% draw (no change to the payment schedule) and apply to newly created projects.</p>
-    </div>
-    <div class="card" style="max-width:760px">
-      <h2>Sales Rep Forms</h2>
-      <p class="muted">A blank, fillable PDF that mirrors the Pool Specs page — Owner/Builder, address, every pool spec field, and a Notes area. Send it to a rep to complete on-site (type into it or print &amp; hand-write), then use it to enter the specs here.</p>
-      <a class="btn secondary" href="/api/forms/pool-spec-intake.pdf" target="_blank">⬇ Pool Spec Intake Form (PDF)</a>
     </div>
     <div class="card" style="max-width:860px">
       <h2>Scope of Work (master template)</h2>
