@@ -1297,9 +1297,11 @@ function vSettings() {
       ${st.disclosures.map((d, i) => `
         <div class="card" style="background:var(--blue-pale)" data-disc>
           <div class="row" style="align-items:center">
-            <b style="color:var(--blue-dark)">${i + 1}.</b>
+            <b class="disc-num" style="color:var(--blue-dark)">${i + 1}.</b>
             <input class="input grow disc-title" value="${esc(d.title)}">
-            <button class="btn danger small" onclick="this.closest('[data-disc]').remove()">✕</button>
+            <button class="btn secondary small" title="Move up" onclick="discMove(this,-1)">↑</button>
+            <button class="btn secondary small" title="Move down" onclick="discMove(this,1)">↓</button>
+            <button class="btn danger small" onclick="this.closest('[data-disc]').remove();discRenumber()">✕</button>
           </div>
           <textarea class="input disc-body" style="margin-top:8px;min-height:90px">${esc(d.body)}</textarea>
         </div>`).join('')}
@@ -1312,11 +1314,23 @@ function vSettings() {
 window.discAdd = function () {
   $('#discList').insertAdjacentHTML('beforeend', `
     <div class="card" style="background:var(--blue-pale)" data-disc>
-      <div class="row" style="align-items:center"><b style="color:var(--blue-dark)">＋</b>
+      <div class="row" style="align-items:center"><b class="disc-num" style="color:var(--blue-dark)">＋</b>
         <input class="input grow disc-title" placeholder="Section title">
-        <button class="btn danger small" onclick="this.closest('[data-disc]').remove()">✕</button></div>
+        <button class="btn secondary small" title="Move up" onclick="discMove(this,-1)">↑</button>
+        <button class="btn secondary small" title="Move down" onclick="discMove(this,1)">↓</button>
+        <button class="btn danger small" onclick="this.closest('[data-disc]').remove();discRenumber()">✕</button></div>
       <textarea class="input disc-body" style="margin-top:8px;min-height:90px"></textarea>
     </div>`);
+  discRenumber();
+};
+window.discMove = function (btn, dir) {
+  const card = btn.closest('[data-disc]');
+  if (dir < 0 && card.previousElementSibling) card.parentNode.insertBefore(card, card.previousElementSibling);
+  else if (dir > 0 && card.nextElementSibling) card.parentNode.insertBefore(card.nextElementSibling, card);
+  discRenumber();
+};
+window.discRenumber = function () {
+  [...document.querySelectorAll('#discList [data-disc] .disc-num')].forEach((n, i) => { n.textContent = (i + 1) + '.'; });
 };
 window.ttAdd = function (phaseKey) {
   document.querySelector(`[data-ttphase="${phaseKey}"]`).insertAdjacentHTML('beforeend', `
