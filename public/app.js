@@ -264,6 +264,8 @@ function tSpecs(c) {
       </div>
       <div class="row">
         <label class="fld grow">Size<input type="text" id="pb_size" value="${esc(pb.size)}" ${dis}></label>
+      </div>
+      <div class="row">
         <label class="fld grow">Depth<input type="text" id="pb_depth" value="${esc(pb.depth)}" ${dis}></label>
       </div>
       <div class="row">
@@ -1310,7 +1312,32 @@ function vSettings() {
     </div>
     <button class="btn" onclick="settingsSave()">💾 Save All Settings</button>
     <p class="muted" style="margin-top:8px">Weekly Pebble Tec check email goes to: <b>${esc(st.pebbleCheckEmail)}</b> (Mondays 7:00 AM CST while the app is running).</p>`;
+  initSettingsCollapse();
 }
+// Collapse each Settings section to just its header; clicking the header expands
+// it. Inputs stay in the DOM while collapsed, so Save reads them all as normal.
+window.initSettingsCollapse = function () {
+  document.querySelectorAll('#main > .card').forEach(card => {
+    const h2 = card.querySelector(':scope > h2');
+    if (!h2) return;
+    const body = document.createElement('div');
+    body.className = 'card-body';
+    for (let n = h2.nextSibling; n; n = h2.nextSibling) body.appendChild(n);
+    card.appendChild(body);
+    body.style.display = 'none';
+    h2.style.cursor = 'pointer';
+    h2.style.userSelect = 'none';
+    const caret = document.createElement('span');
+    caret.textContent = '▸ ';
+    caret.style.color = 'var(--blue)';
+    h2.insertBefore(caret, h2.firstChild);
+    h2.addEventListener('click', () => {
+      const open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : '';
+      caret.textContent = open ? '▸ ' : '▾ ';
+    });
+  });
+};
 window.discAdd = function () {
   $('#discList').insertAdjacentHTML('beforeend', `
     <div class="card" style="background:var(--blue-pale)" data-disc>
