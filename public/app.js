@@ -99,7 +99,7 @@ function vDashboard() {
       <div class="metric ${phasesDueSoon.length ? 'warn' : ''}"><div class="v">${phasesDueSoon.length}</div><div class="l">Phases Due ≤ 7d</div></div>
     </div>
     <div class="row">
-      <div class="card grow" style="flex:2;min-width:380px">
+      <div class="card grow" style="min-width:380px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <h2 style="margin:0">Projects</h2>
           ${S.clients.length ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -111,27 +111,8 @@ function vDashboard() {
         </div>
         <div id="dashProjects" style="margin-top:10px">${S.clients.length ? dashProjectsHTML() : '<p class="muted">No clients yet — click <b>Add New Prospect</b> to create your first one.</p>'}</div>
       </div>
-      <div class="card grow" style="min-width:300px;max-width:420px">
-        <h2>Recent Alerts</h2>
-        ${S.alerts.length ? `
-          ${S.alerts.slice(0, 5).map(alertRowHTML).join('')}
-          ${S.alerts.length > 5 ? `
-            <div id="moreAlerts" style="display:none">${S.alerts.slice(5).map(alertRowHTML).join('')}</div>
-            <button class="btn secondary small" id="alertsToggle" style="margin-top:8px" onclick="toggleAlerts()">▾ Show ${S.alerts.length - 5} more</button>
-          ` : ''}
-        ` : '<p class="muted">Nothing yet.</p>'}
-      </div>
     </div>`;
 }
-
-const alertRowHTML = a => `<div class="alert-row"><span class="alert-dot ${a.type}"></span><span style="flex:1">${esc(a.message)}</span><span class="when">${ago(a.createdAt)}</span></div>`;
-window.toggleAlerts = function () {
-  const m = $('#moreAlerts'), b = $('#alertsToggle');
-  if (!m || !b) return;
-  const open = m.style.display !== 'none';
-  m.style.display = open ? 'none' : '';
-  b.textContent = open ? `▾ Show ${S.alerts.length - 5} more` : '▴ Show less';
-};
 
 // Dashboard Projects — filter options and sortable columns.
 const DASH_FILTERS = [['all', 'All statuses'], ['prospect', 'Prospect'], ['contract_sent', 'Contract Sent'], ['active', 'In Build'], ['completed', 'Completed'], ['lost', 'Lost']];
