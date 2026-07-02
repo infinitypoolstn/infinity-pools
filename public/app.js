@@ -2,6 +2,8 @@
 'use strict';
 
 let S = null; // bootstrap state
+// Dashboard Projects list: current filter / search / sort (persists across re-renders)
+const dashUI = { filter: 'all', q: '', sortKey: 'address', sortDir: 1 };
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -98,22 +100,16 @@ function vDashboard() {
     </div>
     <div class="row">
       <div class="card grow" style="flex:2;min-width:380px">
-        <h2>Projects</h2>
-        ${S.clients.length ? `<table class="tbl"><thead><tr><th>Address</th><th>Status</th><th>Current Phase</th><th>Progress</th><th class="right">Quote</th><th class="right">Change Orders</th><th class="right">Costs</th><th class="right">Profit</th></tr></thead><tbody>
-          ${S.clients.map(c => {
-            const profit = c._quote + c._coTotal - c._costs;
-            return `<tr style="cursor:pointer" onclick="location.hash='#/client/${c.id}'">
-            <td><b>${esc(c.address) || '<i>no address</i>'}</b><div class="muted">${esc(c.name)}</div></td>
-            <td><span class="chip ${c.status}">${statusLabel[c.status]}</span></td>
-            <td>${c._currentPhase ? `<span class="chip phase">${esc(c._currentPhase.name)}</span>${c._currentPhase.dueDate ? `<div class="muted">due ${fmtDate(c._currentPhase.dueDate)}</div>` : ''}` : c.status === 'completed' ? '🏁 Done' : '—'}</td>
-            <td><div class="progress"><div style="width:${phasePct(c)}%"></div></div></td>
-            <td class="right money">${money(c._quote)}</td>
-            <td class="right money">${c._coTotal ? money(c._coTotal) : '—'}</td>
-            <td class="right money">${c._costs ? money(c._costs) : '—'}</td>
-            <td class="right money" style="color:${profit >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${money(profit)}</td>
-          </tr>`;
-          }).join('')}
-        </tbody></table>` : '<p class="muted">No clients yet — click <b>Add New Prospect</b> to create your first one.</p>'}
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <h2 style="margin:0">Projects</h2>
+          ${S.clients.length ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input class="input" id="dashSearch" placeholder="Search address or name…" value="${esc(dashUI.q)}" oninput="dashSearch(this.value)" style="max-width:200px">
+            <select class="input" id="dashFilter" onchange="dashSetFilter(this.value)" style="max-width:150px">
+              ${DASH_FILTERS.map(([v, l]) => `<option value="${v}" ${dashUI.filter === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </div>` : ''}
+        </div>
+        <div id="dashProjects" style="margin-top:10px">${S.clients.length ? dashProjectsHTML() : '<p class="muted">No clients yet — click <b>Add New Prospect</b> to create your first one.</p>'}</div>
       </div>
       <div class="card grow" style="min-width:300px;max-width:420px">
         <h2>Recent Alerts</h2>
@@ -121,6 +117,67 @@ function vDashboard() {
       </div>
     </div>`;
 }
+
+// Dashboard Projects — filter options and sortable columns.
+const DASH_FILTERS = [['all', 'All statuses'], ['prospect', 'Prospect'], ['contract_sent', 'Contract Sent'], ['active', 'In Build'], ['completed', 'Completed'], ['lost', 'Lost']];
+const DASH_STATUS_ORDER = { prospect: 0, contract_sent: 1, active: 2, completed: 3, lost: 4 };
+// [sortKey, header label, alignment]
+const DASH_COLS = [
+  ['address', 'Address', ''], ['status', 'Status', ''], ['phase', 'Current Phase', ''], ['progress', 'Progress', ''],
+  ['quote', 'Quote', 'right'], ['co', 'Change Orders', 'right'], ['costs', 'Costs', 'right'], ['profit', 'Profit', 'right'],
+];
+function dashSortVal(c, key) {
+  switch (key) {
+    case 'address': return (c.address || c.name || '').toLowerCase();
+    case 'status': return DASH_STATUS_ORDER[c.status] ?? 99;
+    case 'phase': return (c._currentPhase ? c._currentPhase.name : '').toLowerCase();
+    case 'progress': return phasePct(c);
+    case 'quote': return c._quote;
+    case 'co': return c._coTotal;
+    case 'costs': return c._costs;
+    case 'profit': return c._quote + c._coTotal - c._costs;
+    default: return 0;
+  }
+}
+function dashProjectsHTML() {
+  const q = dashUI.q.trim().toLowerCase();
+  let list = S.clients.filter(c =>
+    (dashUI.filter === 'all' || c.status === dashUI.filter) &&
+    (!q || (c.address || '').toLowerCase().includes(q) || (c.name || '').toLowerCase().includes(q)));
+  const dir = dashUI.sortDir;
+  list = list.slice().sort((a, b) => {
+    const va = dashSortVal(a, dashUI.sortKey), vb = dashSortVal(b, dashUI.sortKey);
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
+    return cmp * dir || (a.address || '').localeCompare(b.address || '');
+  });
+  const arrow = k => dashUI.sortKey === k ? (dashUI.sortDir > 0 ? ' ▲' : ' ▼') : '';
+  const head = DASH_COLS.map(([k, label, align]) =>
+    `<th class="${align}" style="cursor:pointer;white-space:nowrap" onclick="dashSort('${k}')" title="Sort by ${label}">${label}${arrow(k)}</th>`).join('');
+  if (!list.length) return `<table class="tbl"><thead><tr>${head}</tr></thead></table><p class="muted" style="margin-top:8px">No projects match this filter.</p>`;
+  const rows = list.map(c => {
+    const profit = c._quote + c._coTotal - c._costs;
+    return `<tr style="cursor:pointer" onclick="location.hash='#/client/${c.id}'">
+      <td><b>${esc(c.address) || '<i>no address</i>'}</b><div class="muted">${esc(c.name)}</div></td>
+      <td><span class="chip ${c.status}">${statusLabel[c.status]}</span></td>
+      <td>${c._currentPhase ? `<span class="chip phase">${esc(c._currentPhase.name)}</span>${c._currentPhase.dueDate ? `<div class="muted">due ${fmtDate(c._currentPhase.dueDate)}</div>` : ''}` : c.status === 'completed' ? '🏁 Done' : '—'}</td>
+      <td><div class="progress"><div style="width:${phasePct(c)}%"></div></div></td>
+      <td class="right money">${money(c._quote)}</td>
+      <td class="right money">${c._coTotal ? money(c._coTotal) : '—'}</td>
+      <td class="right money">${c._costs ? money(c._costs) : '—'}</td>
+      <td class="right money" style="color:${profit >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${money(profit)}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="tbl"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
+    <p class="muted" style="margin-top:8px;font-size:12px">Showing ${list.length} of ${S.clients.length} project${S.clients.length === 1 ? '' : 's'}.</p>`;
+}
+function renderDashProjects() { const el = $('#dashProjects'); if (el) el.innerHTML = dashProjectsHTML(); }
+window.dashSearch = function (v) { dashUI.q = v; renderDashProjects(); };
+window.dashSetFilter = function (v) { dashUI.filter = v; renderDashProjects(); };
+window.dashSort = function (key) {
+  if (dashUI.sortKey === key) dashUI.sortDir *= -1;
+  else { dashUI.sortKey = key; dashUI.sortDir = 1; }
+  renderDashProjects();
+};
 
 window.addProspect = function () {
   modal(`<h2>Add New Prospect</h2>
