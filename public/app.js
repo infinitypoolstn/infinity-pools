@@ -113,10 +113,25 @@ function vDashboard() {
       </div>
       <div class="card grow" style="min-width:300px;max-width:420px">
         <h2>Recent Alerts</h2>
-        ${S.alerts.slice(0, 12).map(a => `<div class="alert-row"><span class="alert-dot ${a.type}"></span><span style="flex:1">${esc(a.message)}</span><span class="when">${ago(a.createdAt)}</span></div>`).join('') || '<p class="muted">Nothing yet.</p>'}
+        ${S.alerts.length ? `
+          ${S.alerts.slice(0, 5).map(alertRowHTML).join('')}
+          ${S.alerts.length > 5 ? `
+            <div id="moreAlerts" style="display:none">${S.alerts.slice(5).map(alertRowHTML).join('')}</div>
+            <button class="btn secondary small" id="alertsToggle" style="margin-top:8px" onclick="toggleAlerts()">▾ Show ${S.alerts.length - 5} more</button>
+          ` : ''}
+        ` : '<p class="muted">Nothing yet.</p>'}
       </div>
     </div>`;
 }
+
+const alertRowHTML = a => `<div class="alert-row"><span class="alert-dot ${a.type}"></span><span style="flex:1">${esc(a.message)}</span><span class="when">${ago(a.createdAt)}</span></div>`;
+window.toggleAlerts = function () {
+  const m = $('#moreAlerts'), b = $('#alertsToggle');
+  if (!m || !b) return;
+  const open = m.style.display !== 'none';
+  m.style.display = open ? 'none' : '';
+  b.textContent = open ? `▾ Show ${S.alerts.length - 5} more` : '▴ Show less';
+};
 
 // Dashboard Projects — filter options and sortable columns.
 const DASH_FILTERS = [['all', 'All statuses'], ['prospect', 'Prospect'], ['contract_sent', 'Contract Sent'], ['active', 'In Build'], ['completed', 'Completed'], ['lost', 'Lost']];
