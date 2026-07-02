@@ -322,7 +322,13 @@ function tSpecs(c) {
     </div>
 
     ${detailSection('wf_inc', 'Water Feature', 'wf_price', wf.included, wf.price, 'wf_det', wf.details)}
-    ${detailSection('cp_inc', 'Cold Plunge', 'cp_price', cp.included, cp.price, 'cp_det', cp.details)}
+    <div class="card">
+      ${incHead('cp_inc', 'Cold Plunge', 'cp_price', cp.included, cp.price)}
+      <div class="row">
+        <label class="fld grow">Size and Details<input type="text" id="cp_det" value="${esc(cp.details)}" ${dis}></label>
+        <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="cp_led" value="${esc(cp.ledLights)}" ${dis}></label>
+      </div>
+    </div>
     ${detailSection('ff_inc', 'Fire Feature', 'ff_price', ff.included, ff.price, 'ff_det', ff.details)}
 
     <div class="card">
@@ -373,7 +379,7 @@ window.saveSpecs = async function (id) {
     },
     spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led'), details: val('spa_det') },
     waterFeature: { included: chk('wf_inc'), price: num('wf_price'), details: val('wf_det') },
-    coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det') },
+    coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det'), ledLights: val('cp_led') },
     fireFeature: { included: chk('ff_inc'), price: num('ff_price'), details: val('ff_det') },
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value, price: Number(r.querySelector('.ao-price').value) || 0 })).filter(a => a.label.trim()),
   };
