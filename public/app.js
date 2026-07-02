@@ -507,6 +507,7 @@ function tFinance(c) {
 }
 
 /* ---------- Files tab ---------- */
+const IMG_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
 function tFiles(c) {
   $('#tabBody').innerHTML = `
     <div class="card">
@@ -524,16 +525,22 @@ function tFiles(c) {
       <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Documents (${c.files.length})</h2>
         <button class="btn secondary small" onclick="emailFiles('${c.id}')">📧 Email selected…</button></div>
       <table class="tbl" style="margin-top:10px"><thead><tr><th></th><th>File</th><th>Category</th><th>Uploaded</th><th>Cover Photo</th><th></th></tr></thead><tbody>
-      ${c.files.map(f => `<tr>
+      ${c.files.map(f => {
+        const src = `/uploads/${c.id}/${encodeURIComponent(f.storedName)}`;
+        const thumb = IMG_RE.test(f.originalName)
+          ? `<img src="${src}" alt="" loading="lazy" title="Click to preview" onclick="previewImg('${c.id}','${f.id}')" style="height:46px;width:64px;object-fit:cover;border-radius:6px;border:1px solid var(--blue-soft);cursor:pointer;flex:none">`
+          : `<span style="height:46px;width:64px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--blue-soft);background:var(--blue-pale);flex:none">📄</span>`;
+        return `<tr>
         <td><input type="checkbox" class="fileSel" value="${f.id}"></td>
-        <td><b>${esc(f.originalName)}</b><div class="muted">${(f.size / 1024 / 1024).toFixed(1)} MB</div></td>
+        <td><div style="display:flex;align-items:center;gap:10px"><div>${thumb}</div><div><b>${esc(f.originalName)}</b><div class="muted">${(f.size / 1024 / 1024).toFixed(1)} MB</div></div></div></td>
         <td>${esc(f.category)}</td>
         <td class="muted">${fmtDate(f.uploadedAt)}</td>
         <td>${f.category === 'Pool Renderings' ? `<label class="check" style="margin:0"><input type="checkbox" ${f.isCoverPhoto ? 'checked' : ''} onchange="setCover('${c.id}','${f.id}',this.checked)"> ⭐ Contract Cover Photo</label>` : ''}</td>
         <td class="right" style="white-space:nowrap">
           <a class="btn secondary small" href="/api/clients/${c.id}/files/${f.id}/download">⬇</a>
           <button class="btn danger small" onclick="delFile('${c.id}','${f.id}')">✕</button>
-        </td></tr>`).join('') || '<tr><td colspan="6" class="muted">No files uploaded yet.</td></tr>'}
+        </td></tr>`;
+      }).join('') || '<tr><td colspan="6" class="muted">No files uploaded yet.</td></tr>'}
       </tbody></table>
     </div>`;
 }
@@ -556,6 +563,19 @@ window.doUpload = async function (id) {
     route();
   }
   catch (e) { toast(e.message, true); }
+};
+window.previewImg = function (id, fid) {
+  const c = client(id); const f = c && c.files.find(x => x.id === fid);
+  if (!f) return;
+  const src = `/uploads/${id}/${encodeURIComponent(f.storedName)}`;
+  modal(`<h2 style="margin:0 0 10px">${esc(f.originalName)}</h2>
+    <div style="text-align:center;background:var(--blue-pale);border-radius:8px;padding:8px">
+      <img src="${src}" alt="${esc(f.originalName)}" style="max-width:100%;max-height:68vh;border-radius:4px">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <a class="btn secondary" href="${src}" target="_blank">Open full size</a>
+      <button class="btn" onclick="closeModal()">Close</button>
+    </div>`);
 };
 window.setCover = async function (id, fid, on) { await api('POST', `/api/clients/${id}/files/${fid}/cover`, { isCoverPhoto: on }); await reload(); route(); toast(on ? 'Set as contract cover photo' : 'Cover photo removed'); };
 window.delFile = async function (id, fid) { if (!confirm('Delete this file?')) return; await api('DELETE', `/api/clients/${id}/files/${fid}`); await reload(); route(); };
