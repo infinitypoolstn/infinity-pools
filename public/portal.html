@@ -304,17 +304,21 @@ function finishSection(d) {
       </div>`;
     }).join('')}</div></div>`;
   }).join('');
+  const confirmBar = mt => `
+      <div style="margin:${mt} 0 0;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn-approve" onclick="confirmFinish()" ${pending ? '' : 'disabled style="opacity:.5;cursor:default"'}>✓ Confirm Selection</button>
+        ${finishChanging && sel ? '<button class="btn-decline" onclick="cancelChangeFinish()">Cancel</button>' : ''}
+      </div>`;
   return `
     <div class="card">
       <h2>Choose Your Interior Finish</h2>
       <p class="pick-hint">Tap a Pebble Tec color to choose your pool's interior finish, then tap <b>Confirm Selection</b>.</p>
       <p class="pick-hint"><b>*</b> Colors marked with an asterisk are <b>upgrade or premium finishes</b> and carry an additional charge. Browse all colors at <a href="https://pebbletec.com/products/all-finishes/" target="_blank" rel="noopener">pebbletec.com</a>.</p>
+      ${pending ? `<p class="pick-hint" style="color:var(--blue);font-weight:700">Selected: ${esc(pending)} — tap Confirm Selection to lock it in.</p>` : ''}
+      ${confirmBar('4px')}
       <div class="pick-saving" id="pickSaving"></div>
       ${groups}
-      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn-approve" onclick="confirmFinish()" ${pending ? '' : 'disabled style="opacity:.5;cursor:default"'}>✓ Confirm Selection</button>
-        ${finishChanging && sel ? '<button class="btn-decline" onclick="cancelChangeFinish()">Cancel</button>' : ''}
-      </div>
+      ${confirmBar('14px')}
     </div>`;
 }
 window.pickFinish = function (name) { pendingFinish = name; renderPortal(PORTAL_D); };
