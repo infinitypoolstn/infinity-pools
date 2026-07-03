@@ -79,6 +79,7 @@ function vDashboard() {
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <h1 style="margin:0">Dashboard</h1>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary" onclick="createTestJob()" title="Create a sample project you can step through end to end — no QuickBooks invoice is ever created">🧪 Create Test Job</button>
         <a class="btn secondary" href="/api/forms/pool-spec-intake.pdf" target="_blank" title="Blank, fillable Pool Specs form to send to a sales rep">⬇ Sales Rep Form</a>
         <button class="btn" onclick="addProspect()">＋ Add New Prospect</button>
       </div>
@@ -153,7 +154,7 @@ function dashProjectsHTML() {
   const rows = list.map(c => {
     const profit = c._quote + c._coTotal - c._costs;
     return `<tr style="cursor:pointer" onclick="location.hash='#/client/${c.id}'">
-      <td><b>${esc(c.address) || '<i>no address</i>'}</b><div class="muted">${esc(c.name)}</div></td>
+      <td>${c.testMode ? '<span class="chip" style="background:#fde8c8;color:#8a5a10;margin-right:6px">🧪 TEST</span>' : ''}<b>${esc(c.address) || '<i>no address</i>'}</b><div class="muted">${esc(c.name)}</div></td>
       <td><span class="chip ${c.status}">${statusLabel[c.status]}</span></td>
       <td>${c._currentPhase ? `<span class="chip phase">${esc(c._currentPhase.name)}</span>${c._currentPhase.dueDate ? `<div class="muted">due ${fmtDate(c._currentPhase.dueDate)}</div>` : ''}` : c.status === 'completed' ? '🏁 Done' : '—'}</td>
       <td><div class="progress"><div style="width:${phasePct(c)}%"></div></div></td>
@@ -173,6 +174,16 @@ window.dashSort = function (key) {
   if (dashUI.sortKey === key) dashUI.sortDir *= -1;
   else { dashUI.sortKey = key; dashUI.sortDir = 1; }
   renderDashProjects();
+};
+
+window.createTestJob = async function () {
+  if (!confirm('Create a TEST job?\n\nIt comes pre-filled with sample specs so you can step through the whole workflow — send/sign the contract, run phases, request payments. No QuickBooks invoice is ever created for a test job. Emails go to your company address. Delete it any time.')) return;
+  try {
+    const c = await api('POST', '/api/clients/test-job', {});
+    await reload();
+    location.hash = '#/client/' + c.id;
+    toast('🧪 Test job created — invoicing is disabled for it');
+  } catch (e) { toast(e.message, true); }
 };
 
 window.addProspect = function () {
@@ -250,7 +261,7 @@ function vClient(id, tab = 'specs') {
   $('#main').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <div>
-        <h1 style="margin:0 0 2px">${esc(c.address) || esc(c.name)}</h1>
+        <h1 style="margin:0 0 2px">${c.testMode ? '<span class="chip" style="background:#fde8c8;color:#8a5a10;vertical-align:middle;margin-right:8px">🧪 TEST</span>' : ''}${esc(c.address) || esc(c.name)}</h1>
         <div class="muted">${esc(c.name)} · ${esc(c.email)} · ${esc(c.phone)} &nbsp; <span class="chip ${c.status}">${statusLabel[c.status]}</span>
         ${c._currentPhase ? ` <span class="chip phase">${esc(c._currentPhase.name)}</span>` : ''}</div>
       </div>
@@ -259,6 +270,7 @@ function vClient(id, tab = 'specs') {
         <a class="btn secondary small" href="/api/clients/${c.id}/contract.pdf" target="_blank">⬇ Contract PDF</a>
       </div>
     </div>
+    ${c.testMode ? '<div class="banner" style="margin-top:12px;background:#fef4dc;border:1px solid #f3e3b5;color:#8a5a10">🧪 <b>Test job.</b> Step through any part of the workflow freely — <b>no QuickBooks invoice is ever created</b> for this project. Delete it when you\'re done.</div>' : ''}
     ${c.specsLocked ? '<div class="banner lock" style="margin-top:12px">🔒 Contract signed — pool specs and pricing are locked. All changes must be entered as <a href="#/client/' + c.id + '/changes">Change Orders</a>.</div>' : ''}
     <div class="tabs" style="margin-top:14px">
       ${TABS.map(([k, l]) => `<button class="${k === tab ? 'active' : ''}" onclick="location.hash='#/client/${c.id}/${k}'">${l}</button>`).join('')}
@@ -696,7 +708,7 @@ function tContract(c) {
             <label class="fld grow">Deposit taken now?<select id="depMethod"><option value="">No — send payment link</option><option value="check">Yes — check</option><option value="cash">Yes — cash</option></select></label>
             <button class="btn green" style="margin-bottom:12px" onclick="markSigned('${c.id}')">✓ Contract Signed</button>
           </div>
-          <p class="muted">Signing locks specs & pricing, starts the Design phase, alerts the team, ${S.quickbooksConnected ? 'creates the QuickBooks invoice for the full amount,' : ''} and sends the 10% design draw request.</p>
+          <p class="muted">Signing locks specs & pricing, starts the Design phase, alerts the team, ${c.testMode ? '<b>(test job — no invoice is created)</b>' : S.quickbooksConnected ? 'creates the QuickBooks invoice for the full amount,' : ''} and sends the 10% design draw request.</p>
         </div></details>`;
 
   $('#tabBody').innerHTML = `
@@ -714,6 +726,7 @@ function tContract(c) {
       </div>
       <div class="card grow" style="min-width:300px;max-width:430px">
         <h2>QuickBooks</h2>
+        ${c.testMode ? '<div class="banner" style="background:#fef4dc;border:1px solid #f3e3b5;color:#8a5a10">🧪 Test job — QuickBooks invoicing is disabled. You can still paste practice payment links per phase below.</div>' : `
         ${S.quickbooksConnected ? '<span class="chip active">Connected</span>' : '<p class="muted">Not connected — payment links can still be pasted per phase below. Connect in <a href="#/settings">Settings</a>.</p>'}
         ${c.quickbooks.invoiceUrl
           ? `<p style="margin-top:10px">Master invoice: <a href="${c.quickbooks.invoiceUrl}" target="_blank">open in QuickBooks ↗</a></p>
@@ -721,7 +734,7 @@ function tContract(c) {
           : S.quickbooksConnected && c.contract.signedAt
             ? `<div class="banner warn" style="margin-top:10px">Master invoice was not created — this usually means the QuickBooks connection needs attention.</div>
                <button class="btn" style="margin-top:10px" onclick="createQbInvoice('${c.id}')">Create QB Customer &amp; Invoice</button>`
-            : ''}
+            : ''}`}
       </div>
     </div>
     <div class="card">

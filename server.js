@@ -181,6 +181,35 @@ app.post('/api/clients', (req, res) => {
   res.json(c);
 });
 
+// Create a seeded TEST job: a full, walkable project (specs → contract → sign →
+// phases → payment requests) that never creates a QuickBooks invoice. Emails go
+// to the company address so you can watch the client-facing flow end to end.
+app.post('/api/clients/test-job', (req, res) => {
+  const settings = store.data.settings || {};
+  const email = String(req.body.email || settings.companyEmail || '').trim();
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const c = store.newClient({
+    name: 'TEST — Sample Homeowner',
+    address: `123 Test Street (TEST JOB · ${stamp})`,
+    email,
+    phone: '615-555-0100',
+    testMode: true,
+  });
+  // Pre-fill enough specs to produce a realistic contract + quote.
+  c.specs.poolBase.size = "16' x 32'";
+  c.specs.poolBase.depth = "3.5' - 6'";
+  c.specs.poolBase.jets = '8';
+  c.specs.poolBase.ledLights = '4';
+  c.specs.poolBase.price = 120000;
+  c.specs.spaBase = { included: true, price: 22000, size: "7' x 7'", jets: '6', ledLights: '2', details: 'Raised spa with spillover' };
+  c.finance = store.specsToFinance(c.specs);
+  c.notes = 'This is a TEST job. No QuickBooks invoice will ever be created for it. Delete it when you are done.';
+  store.data.clients.push(c);
+  store.addAlert(`🧪 Test job created: ${c.address} — invoicing disabled.`, { clientId: c.id, type: 'info' });
+  store.save();
+  res.json(c);
+});
+
 // Create a prospect from a filled Sales Rep Form (Pool Spec intake PDF): parse the
 // AcroForm fields and pre-populate the client's contact info + Pool Specs.
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -334,7 +363,7 @@ async function finalizeContractSigning(c, { method, depositMethod = null, finish
   }
 
   let qb = null, qbError = null;
-  if (quickbooks.connected()) {
+  if (quickbooks.connected() && !c.testMode) {
     try { qb = await quickbooks.createContractInvoice(c, store.quoteTotal(c)); }
     catch (e) { qbError = e.message; store.addAlert('QuickBooks invoice creation failed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' }); }
   }
@@ -487,6 +516,7 @@ app.post('/api/settings/quickbooks/test', wrap(async (req, res) => {
 // Manually create QB customer + master invoice when auto-creation failed at signing.
 app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
+  if (c.testMode) return res.status(400).json({ error: 'This is a test job — invoicing is disabled.' });
   if (!c.contract.signedAt) return res.status(400).json({ error: 'Contract has not been signed yet.' });
   if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
   if (c.quickbooks.invoiceId) return res.status(400).json({ error: 'A QuickBooks invoice already exists for this client.' });
@@ -510,7 +540,7 @@ app.post('/api/clients/:id/change-orders', wrap(async (req, res) => {
   c.changeOrders.push(co);
   store.addAlert(`${c.address}: change order added — "${co.description}" (${alerts.fmtMoney(co.value)})`, { clientId: c.id, type: 'change' });
   let qbError = null;
-  if (quickbooks.connected() && co.value !== 0) {
+  if (quickbooks.connected() && !c.testMode && co.value !== 0) {
     try { await quickbooks.createChangeOrderInvoice(c, co); }
     catch (e) { qbError = e.message; store.addAlert('QuickBooks CO invoice failed: ' + e.message, { clientId: c.id, type: 'error' }); }
   }
