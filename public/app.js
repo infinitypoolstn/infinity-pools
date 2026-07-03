@@ -577,23 +577,30 @@ function tFiles(c) {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Documents (${c.files.length})</h2>
         <button class="btn secondary small" onclick="emailFiles('${c.id}')">📧 Email selected…</button></div>
-      <table class="tbl" style="margin-top:10px"><thead><tr><th></th><th>File</th><th>Category</th><th>Uploaded</th><th>Cover Photo</th><th></th></tr></thead><tbody>
+      <p class="muted" style="margin:0 0 6px">👁 <b>Client portal:</b> Pool Renderings show automatically once the contract is signed. For any other file, check <b>Show to client</b> to add it to the collapsible files menu on their portal.</p>
+      <table class="tbl" style="margin-top:10px"><thead><tr><th></th><th>File</th><th>Category</th><th>Uploaded</th><th>Cover Photo</th><th>Client Portal</th><th></th></tr></thead><tbody>
       ${c.files.map(f => {
         const src = `/uploads/${c.id}/${encodeURIComponent(f.storedName)}`;
         const thumb = IMG_RE.test(f.originalName)
           ? `<img src="${src}" alt="" loading="lazy" title="Click to preview" onclick="previewImg('${c.id}','${f.id}')" style="height:46px;width:64px;object-fit:cover;border-radius:6px;border:1px solid var(--blue-soft);cursor:pointer;flex:none">`
           : `<span style="height:46px;width:64px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--blue-soft);background:var(--blue-pale);flex:none">📄</span>`;
+        const visCell = f.category === 'Pool Renderings'
+          ? '<span class="muted" title="Renderings show automatically after signing">🎨 Auto after signing</span>'
+          : f.category === 'Signed Contract'
+            ? '<span class="muted">On contract card</span>'
+            : `<label class="check" style="margin:0"><input type="checkbox" ${f.clientVisible ? 'checked' : ''} onchange="setVisibility('${c.id}','${f.id}',this.checked)"> 👁 Show to client</label>`;
         return `<tr>
         <td><input type="checkbox" class="fileSel" value="${f.id}"></td>
         <td><div style="display:flex;align-items:center;gap:10px"><div>${thumb}</div><div><b>${esc(f.originalName)}</b><div class="muted">${(f.size / 1024 / 1024).toFixed(1)} MB</div></div></div></td>
         <td>${esc(f.category)}</td>
         <td class="muted">${fmtDate(f.uploadedAt)}</td>
         <td>${f.category === 'Pool Renderings' ? `<label class="check" style="margin:0"><input type="checkbox" ${f.isCoverPhoto ? 'checked' : ''} onchange="setCover('${c.id}','${f.id}',this.checked)"> ⭐ Contract Cover Photo</label>` : ''}</td>
+        <td>${visCell}</td>
         <td class="right" style="white-space:nowrap">
           <a class="btn secondary small" href="/api/clients/${c.id}/files/${f.id}/download">⬇</a>
           <button class="btn danger small" onclick="delFile('${c.id}','${f.id}')">✕</button>
         </td></tr>`;
-      }).join('') || '<tr><td colspan="6" class="muted">No files uploaded yet.</td></tr>'}
+      }).join('') || '<tr><td colspan="7" class="muted">No files uploaded yet.</td></tr>'}
       </tbody></table>
     </div>`;
 }
@@ -631,6 +638,7 @@ window.previewImg = function (id, fid) {
     </div>`);
 };
 window.setCover = async function (id, fid, on) { await api('POST', `/api/clients/${id}/files/${fid}/cover`, { isCoverPhoto: on }); await reload(); route(); toast(on ? 'Set as contract cover photo' : 'Cover photo removed'); };
+window.setVisibility = async function (id, fid, on) { await api('POST', `/api/clients/${id}/files/${fid}/visibility`, { clientVisible: on }); await reload(); route(); toast(on ? 'File is now visible on the client portal' : 'File hidden from the client portal'); };
 window.delFile = async function (id, fid) { if (!confirm('Delete this file?')) return; await api('DELETE', `/api/clients/${id}/files/${fid}`); await reload(); route(); };
 window.emailFiles = function (id) {
   const c = client(id);

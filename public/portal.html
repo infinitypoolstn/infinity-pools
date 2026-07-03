@@ -64,6 +64,22 @@
   .fin .nm { padding:8px 10px; font-size:12.5px; font-weight:700; }
   .fin .nm small { display:block; color:var(--mid); font-weight:500; }
 
+  /* renderings gallery + shared files */
+  .rend-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+  .rend { border:2px solid var(--soft); border-radius:12px; overflow:hidden; background:#fff; }
+  .rend img { width:100%; height:160px; object-fit:cover; display:block; cursor:pointer; transition:transform .15s; }
+  .rend img:hover { transform:scale(1.03); }
+  details.files summary { cursor:pointer; font-weight:800; color:var(--blue-deep); font-size:17px; list-style:none; display:flex; align-items:center; gap:8px; }
+  details.files summary::-webkit-details-marker { display:none; }
+  details.files summary::before { content:'▸'; color:var(--blue); transition:transform .15s; }
+  details.files[open] summary::before { transform:rotate(90deg); }
+  .filelist { list-style:none; margin:14px 0 0; padding:0; }
+  .filelist li { padding:11px 4px; border-bottom:1px solid #eef4fa; display:flex; align-items:center; gap:10px; }
+  .filelist li:last-child { border-bottom:none; }
+  .filelist a { color:var(--blue); text-decoration:none; font-weight:600; flex:1; }
+  .filelist a:hover { text-decoration:underline; }
+  .filelist .cat { color:var(--mid); font-size:12px; }
+
   /* finish picker */
   .brand-group { margin-top:14px; }
   .brand-group h3 { margin:0 0 8px; font-size:14px; color:var(--blue-dark); }
@@ -300,6 +316,11 @@ function renderPortal(d) {
   const stage = doneAll ? 7 : Math.max(curIdx, 0);
   const cur = curIdx >= 0 ? phases[curIdx] : null;
   const finishColor = (d.selectedFinishes.find(f => f.color) || {}).color;
+  // Files we've shared are session-gated; <img>/<a> pass the session as ?s=…
+  const sid = localStorage.getItem(SESSION_KEY);
+  const fileUrl = id => `/api/portal/${token}/files/${id}?s=${encodeURIComponent(sid)}`;
+  const renderings = (d.renderings || []).filter(f => f.isImage);
+  const sharedFiles = d.sharedFiles || [];
 
   const stepCls = (p, i) => p.status === 'complete' ? 'past' : (p.status === 'active' ? 'current' : 'future');
 
@@ -377,6 +398,25 @@ function renderPortal(d) {
       <div class="fin-grid">
         ${d.selectedFinishes.map(f => `<div class="fin">${f.image ? `<img src="${esc(f.image)}" alt="${esc(f.name)}">` : `<div class="cb" style="background:${esc(f.color || '#8fb8d4')}"></div>`}<div class="nm">${esc(f.name)}<small>${esc(f.brand || '')}</small></div></div>`).join('')}
       </div>
+    </div>` : ''}
+
+    ${d.contractSigned && renderings.length ? `
+    <div class="card">
+      <h2>🎨 Your Pool Renderings</h2>
+      <p class="muted" style="margin:-6px 0 12px">Tap any rendering to view it full size.</p>
+      <div class="rend-grid">
+        ${renderings.map(f => `<div class="rend"><a href="${fileUrl(f.id)}" target="_blank" rel="noopener"><img loading="lazy" src="${fileUrl(f.id)}" alt="${esc(f.name)}"></a></div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${d.contractSigned && sharedFiles.length ? `
+    <div class="card">
+      <details class="files">
+        <summary>📁 Project Files (${sharedFiles.length})</summary>
+        <ul class="filelist">
+          ${sharedFiles.map(f => `<li><span>${f.isImage ? '🖼️' : '📄'}</span><a href="${fileUrl(f.id)}" target="_blank" rel="noopener">${esc(f.name)}</a><span class="cat">${esc(f.category)}</span></li>`).join('')}
+        </ul>
+      </details>
     </div>` : ''}
 
     ${finishPicker(d)}

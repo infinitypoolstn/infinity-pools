@@ -103,6 +103,17 @@ function publicClientView(c) {
       image: f.localImage || f.imageUrl, color: f.color, shimmer: !!f.shimmer,
     })),
     clientTodos: (c.clientTodos || []).filter(t => !t.done),
+    // Files the client can see — only after they've accepted (signed). Pool
+    // Renderings show automatically; other files appear only if flagged visible.
+    ...(() => {
+      const isImg = n => /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(n || '');
+      const files = c.contract.signedAt ? (c.files || []) : [];
+      const meta = f => ({ id: f.id, name: f.originalName, category: f.category, isImage: isImg(f.originalName) });
+      return {
+        renderings: files.filter(f => f.category === 'Pool Renderings').map(meta),
+        sharedFiles: files.filter(f => f.clientVisible && f.category !== 'Pool Renderings' && f.category !== 'Signed Contract').map(meta),
+      };
+    })(),
     contractSigned: !!c.contract.signedAt,
     contractSignedAt: c.contract.signedAt || null,
     contractSentAt: c.contract.sentAt || null,
@@ -594,6 +605,16 @@ app.post('/api/clients/:id/files/:fileId/cover', (req, res) => {
   res.json(c);
 });
 
+// Toggle whether a file is visible to the client on their portal (after signing).
+app.post('/api/clients/:id/files/:fileId/visibility', (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const f = c.files.find(f => f.id === req.params.fileId);
+  if (!f) return res.status(404).json({ error: 'File not found' });
+  f.clientVisible = !!req.body.clientVisible;
+  store.save();
+  res.json(c);
+});
+
 app.delete('/api/clients/:id/files/:fileId', (req, res) => {
   const c = getClient(req, res); if (!c) return;
   const f = c.files.find(f => f.id === req.params.fileId);
@@ -754,16 +775,30 @@ app.post('/api/portal/:token/verify', (req, res) => {
 
 // Resolve the client for an authenticated portal request, or send the error and
 // return null. Requires a valid, unexpired session for this token.
-function portalClient(req, res) {
+function portalClient(req, res, { allowQuerySession = false } = {}) {
   const c = store.data.clients.find(c => c.portalToken === req.params.token);
   if (!c) { res.status(404).json({ error: 'Project not found' }); return null; }
-  const sessionId = req.headers['x-portal-session'];
+  // <img>/<a> tags can't send a custom header, so file requests may pass the
+  // session as ?s=… instead. The portalToken + session together still gate access.
+  const sessionId = req.headers['x-portal-session'] || (allowQuerySession ? req.query.s : null);
   const session = sessionId && portalSessions.get(sessionId);
   if (!session || session.portalToken !== req.params.token || session.expires < Date.now()) {
     res.status(401).json({ error: 'verify' }); return null;
   }
   return c;
 }
+
+// Client downloads/views a file we've shared with them (renderings, or files
+// flagged clientVisible) — only after they've accepted (signed).
+app.get('/api/portal/:token/files/:fileId', (req, res) => {
+  const c = portalClient(req, res, { allowQuerySession: true }); if (!c) return;
+  const f = (c.files || []).find(f => f.id === req.params.fileId);
+  const allowed = f && c.contract.signedAt && (f.category === 'Pool Renderings' || f.clientVisible) && f.category !== 'Signed Contract';
+  if (!allowed) return res.status(404).json({ error: 'File not available' });
+  const p = path.join(UPLOADS_DIR, c.id, f.storedName);
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'File not found' });
+  res.sendFile(p); // inline — images render in the gallery, PDFs open in a tab
+});
 
 app.get('/api/portal/:token', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
