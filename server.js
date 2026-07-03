@@ -103,6 +103,14 @@ function publicClientView(c) {
       image: f.localImage || f.imageUrl, color: f.color, shimmer: !!f.shimmer,
     })),
     clientTodos: (c.clientTodos || []).filter(t => !t.done),
+    // Change orders the client can act on — pending ones need their approval;
+    // approved ones show status (and a pay link if one was created). Declined
+    // ones are hidden.
+    changeOrders: (c.changeOrders || []).filter(co => (co.status || 'pending') !== 'declined').map(co => ({
+      id: co.id, description: co.description, value: co.value,
+      status: co.status || 'pending', createdAt: co.createdAt, approvedAt: co.approvedAt || null,
+      paymentLink: co.qbPayLink || null, paymentReceivedAt: co.paymentReceivedAt || null,
+    })),
     // Files the client can see — only after they've accepted (signed). Pool
     // Renderings show automatically; other files appear only if flagged visible.
     ...(() => {
@@ -534,17 +542,66 @@ app.post('/api/clients/:id/change-orders', wrap(async (req, res) => {
     description: String(req.body.description || '').trim(),
     value: Number(req.body.value) || 0,
     createdAt: new Date().toISOString(),
-    qbInvoiceId: null, qbInvoiceUrl: null,
+    // A change order is not invoiced until the client approves it on their portal.
+    status: 'pending', approvedAt: null, declinedAt: null, paymentRequestedAt: null,
+    qbInvoiceId: null, qbInvoiceUrl: null, qbPayLink: null,
   };
   if (!co.description) return res.status(400).json({ error: 'Change description is required' });
   c.changeOrders.push(co);
-  store.addAlert(`${c.address}: change order added — "${co.description}" (${alerts.fmtMoney(co.value)})`, { clientId: c.id, type: 'change' });
-  let qbError = null;
-  if (quickbooks.connected() && !c.testMode && co.value !== 0) {
-    try { await quickbooks.createChangeOrderInvoice(c, co); }
-    catch (e) { qbError = e.message; store.addAlert('QuickBooks CO invoice failed: ' + e.message, { clientId: c.id, type: 'error' }); }
+  store.addAlert(`${c.address}: change order added — "${co.description}" (${alerts.fmtMoney(co.value)}) — awaiting client approval on their portal.`, { clientId: c.id, type: 'change' });
+  // Ask the client to review & approve it on their portal (no invoice yet).
+  let email = null;
+  if (c.email) {
+    try { email = await mailer.send({
+      to: c.email,
+      subject: `Approval needed — change order for ${c.address}`,
+      html: `<p>Hi ${c.name.split(' ')[0]},</p>
+        <p>We've prepared a change order for your project at <b>${c.address}</b>:</p>
+        <p style="margin:10px 0"><b>${co.description}</b><br>
+        Amount: <b>${alerts.fmtMoney(co.value)}</b>${co.value < 0 ? ' (credit)' : ''}</p>
+        <p>Please review and approve it on your project portal. ${co.value > 0 ? 'Once you approve, we\'ll send your invoice and payment request for this change.' : 'Once you approve, the credit will be applied to your contract.'}</p>
+        <p><a href="/portal/${c.portalToken}" style="display:inline-block;background:#0a5ea8;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Review on your portal</a></p>
+        <p>Thank you!<br>Infinity Pools</p>`,
+    }); } catch (e) { /* portal approval still works without the email */ }
   }
   store.save();
+  res.json({ client: c, email });
+}));
+
+// Shared change-order approval flow (client portal, or admin on the client's
+// behalf): mark approved, then — for a positive charge on a non-test job with
+// QuickBooks connected — create the invoice and send it (the payment request).
+async function approveChangeOrder(c, co) {
+  if (co.status === 'approved') return { qbError: null };
+  co.status = 'approved';
+  co.approvedAt = new Date().toISOString();
+  co.declinedAt = null;
+  let qbError = null;
+  if (co.value > 0 && !c.testMode && quickbooks.connected()) {
+    try {
+      await quickbooks.createChangeOrderInvoice(c, co);
+      await quickbooks.sendInvoiceById(c, co.qbInvoiceId);
+      co.paymentRequestedAt = new Date().toISOString();
+    } catch (e) {
+      qbError = e.message;
+      store.addAlert('QuickBooks change-order invoice failed after approval for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' });
+    }
+  }
+  const suffix = co.value > 0
+    ? (c.testMode ? ' (test job — no invoice)' : !quickbooks.connected() ? ' — connect QuickBooks or paste a link to invoice it' : qbError ? ' — invoice FAILED, see error' : ' — invoice created & payment requested')
+    : ' (credit applied)';
+  store.addAlert(`✅ Client APPROVED change order "${co.description}" (${alerts.fmtMoney(co.value)})${suffix}.`, { clientId: c.id, type: 'change' });
+  store.save();
+  return { qbError };
+}
+
+// Admin approves a change order on the client's behalf (e.g. verbal approval),
+// running the same invoice + payment-request flow as the portal approval.
+app.post('/api/clients/:id/change-orders/:coId/approve', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const co = c.changeOrders.find(co => co.id === req.params.coId);
+  if (!co) return res.status(404).json({ error: 'Change order not found' });
+  const { qbError } = await approveChangeOrder(c, co);
   res.json({ client: c, quickbooksError: qbError });
 }));
 
@@ -861,6 +918,30 @@ app.post('/api/portal/:token/contract/signed', wrap(async (req, res) => {
   }
   res.json(publicClientView(c));
 }));
+
+// Client gives final approval to a change order from the portal — this creates
+// the invoice and sends the payment request (for a positive charge).
+app.post('/api/portal/:token/change-orders/:coId/approve', wrap(async (req, res) => {
+  const c = portalClient(req, res); if (!c) return;
+  const co = (c.changeOrders || []).find(co => co.id === req.params.coId);
+  if (!co) return res.status(404).json({ error: 'Change order not found' });
+  await approveChangeOrder(c, co);
+  res.json(publicClientView(c));
+}));
+
+// Client declines a change order from the portal.
+app.post('/api/portal/:token/change-orders/:coId/decline', (req, res) => {
+  const c = portalClient(req, res); if (!c) return;
+  const co = (c.changeOrders || []).find(co => co.id === req.params.coId);
+  if (!co) return res.status(404).json({ error: 'Change order not found' });
+  if (co.status !== 'approved') {
+    co.status = 'declined';
+    co.declinedAt = new Date().toISOString();
+    store.addAlert(`✕ Client DECLINED change order "${co.description}" (${alerts.fmtMoney(co.value)}). Follow up with them.`, { clientId: c.id, type: 'change' });
+    store.save();
+  }
+  res.json(publicClientView(c));
+});
 
 // Client picks their interior (Pebble) finish from the portal. Single selection;
 // the admin can still adjust it on the Design tab.

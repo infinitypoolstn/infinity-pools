@@ -80,6 +80,18 @@
   .filelist a:hover { text-decoration:underline; }
   .filelist .cat { color:var(--mid); font-size:12px; }
 
+  /* change orders */
+  .co { border:1px solid var(--soft); border-radius:12px; padding:14px 16px; margin-top:12px; }
+  .co.pending { border-color:#f3e3b5; background:#fffaf0; }
+  .co .top { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:baseline; }
+  .co .desc { font-weight:600; flex:1; min-width:180px; }
+  .co .amt { font-weight:800; color:var(--blue-dark); font-size:18px; white-space:nowrap; }
+  .co .actions { margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; }
+  .btn-approve { background:var(--green); color:#fff; border:none; padding:11px 22px; border-radius:10px; font-weight:700; cursor:pointer; font-size:14px; font-family:inherit; }
+  .btn-approve:hover { filter:brightness(1.05); }
+  .btn-decline { background:#fff; color:var(--mid); border:1.5px solid var(--soft); padding:11px 20px; border-radius:10px; font-weight:600; cursor:pointer; font-size:14px; font-family:inherit; }
+  .co .status-ok { color:var(--green); font-weight:700; }
+
   /* finish picker */
   .brand-group { margin-top:14px; }
   .brand-group h3 { margin:0 0 8px; font-size:14px; color:var(--blue-dark); }
@@ -285,6 +297,27 @@ window.viewContract = async function () {
   } catch (e) { if (st) st.textContent = 'Could not open the contract — please try again.'; }
 };
 
+async function changeOrderAction(coId, action) {
+  try {
+    const res = await fetch('/api/portal/' + token + '/change-orders/' + coId + '/' + action, {
+      method: 'POST', headers: { 'x-portal-session': localStorage.getItem(SESSION_KEY) },
+    });
+    if (res.status === 401) { localStorage.removeItem(SESSION_KEY); showEmailGate(); return; }
+    if (!res.ok) throw new Error();
+    const y = window.scrollY;
+    renderPortal(await res.json());
+    window.scrollTo(0, y);
+  } catch (e) { alert('Something went wrong — please try again.'); }
+}
+window.coApprove = function (coId) {
+  if (!confirm('Approve this change order? This authorizes the additional work; for a charge, we\'ll send your invoice and payment request.')) return;
+  changeOrderAction(coId, 'approve');
+};
+window.coDecline = function (coId) {
+  if (!confirm('Decline this change order? We\'ll follow up with you.')) return;
+  changeOrderAction(coId, 'decline');
+};
+
 window.selectFinish = async function (name) {
   const sessionId = localStorage.getItem(SESSION_KEY);
   const saving = document.getElementById('pickSaving');
@@ -348,6 +381,31 @@ function renderPortal(d) {
       ${d.signing && d.signing.provider === 'docuseal' ? `
         <div class="pick-saving" id="signStatus"></div>
         <docuseal-form id="docusealForm" data-src="${esc(d.signing.src)}" data-expand="false"></docuseal-form>` : ''}
+    </div>` : ''}
+
+    ${(d.changeOrders && d.changeOrders.length) ? `
+    <div class="card">
+      <h2>🧾 Change Orders</h2>
+      <p class="muted" style="margin:-6px 0 4px">Additional work or credits for your project. Please review and approve so we can proceed.</p>
+      ${d.changeOrders.map(co => {
+        const pending = co.status === 'pending';
+        const credit = co.value < 0;
+        return `<div class="co ${pending ? 'pending' : ''}">
+          <div class="top">
+            <div class="desc">${esc(co.description)}</div>
+            <div class="amt">${credit ? '−' : ''}${money(Math.abs(co.value))}${credit ? ' credit' : ''}</div>
+          </div>
+          ${pending ? `
+            <div class="actions">
+              <button class="btn-approve" onclick="coApprove('${co.id}')">✓ Approve${co.value > 0 ? ' & Get Invoice' : ''}</button>
+              <button class="btn-decline" onclick="coDecline('${co.id}')">Decline</button>
+            </div>` : `
+            <div style="margin-top:8px">
+              <span class="status-ok">✓ Approved${co.approvedAt ? ' on ' + fmtDate(co.approvedAt) : ''}</span>
+              ${co.value > 0 ? (co.paymentReceivedAt ? ' · <span class="paid">✓ Paid — thank you!</span>' : co.paymentLink ? ` · <a class="paybtn" style="padding:8px 18px;font-size:13px" href="${esc(co.paymentLink)}" target="_blank" rel="noopener">Pay ${money(co.value)} →</a>` : ' · <span class="muted">Your invoice is on its way by email.</span>') : ''}
+            </div>`}
+        </div>`;
+      }).join('')}
     </div>` : ''}
 
     <div class="card">

@@ -865,9 +865,9 @@ window.createHaulCO = async function (id, type) {
   const amount = over * rate;
   if (!confirm(`Create change order for ${over} extra ${isTriAxle ? 'haul-off truck(s)' : 'gravel load(s)'} = ${money(amount)}?`)) return;
   try {
-    const r = await api('POST', `/api/clients/${id}/change-orders`, { description: desc, value: amount });
+    await api('POST', `/api/clients/${id}/change-orders`, { description: desc, value: amount });
     await reload(); route();
-    toast('Change order created' + (S.quickbooksConnected ? (r.quickbooksError ? ' (QB error: ' + r.quickbooksError + ')' : ' — QB invoice created') : ''));
+    toast('Change order sent to the client for approval on their portal');
   } catch (e) { toast(e.message, true); }
 };
 
@@ -957,17 +957,33 @@ function tChanges(c) {
       </div>
     </div>
     <div class="card">
-      <table class="tbl"><thead><tr><th>Date</th><th>Change Requested</th><th class="right">Value</th><th>QuickBooks Invoice</th><th></th></tr></thead><tbody>
-      ${c.changeOrders.map(co => `<tr>
+      <p class="muted" style="margin:0 0 8px">Change orders are sent to the client for <b>final approval on their portal</b>. Only after they approve is the QuickBooks invoice created and the payment requested. You can also approve on their behalf if they OK it by phone.</p>
+      <table class="tbl"><thead><tr><th>Date</th><th>Change Requested</th><th class="right">Value</th><th>Status</th><th>Invoice / Payment</th><th></th></tr></thead><tbody>
+      ${c.changeOrders.map(co => {
+        const status = co.status || 'approved';
+        const statusCell = status === 'pending'
+          ? '<span class="chip prospect">🕓 Awaiting client approval</span>'
+          : status === 'declined'
+            ? `<span class="chip lost">✕ Declined</span><div class="muted">${fmtDate(co.declinedAt)}</div>`
+            : `<span class="chip active">✓ Approved</span>${co.approvedAt ? `<div class="muted">${fmtDate(co.approvedAt)}</div>` : ''}`;
+        const invCell = co.qbInvoiceId
+          ? `<a class="btn small secondary" href="${esc(co.qbInvoiceUrl)}" target="_blank">📄 View</a>
+             ${c.email ? `<button class="btn small" onclick="sendCOInvoice('${c.id}','${co.id}')">📧 Resend</button>` : ''}`
+          : status === 'approved'
+            ? (c.testMode ? '<span class="muted">test job — no invoice</span>' : co.value <= 0 ? '<span class="muted">credit — no invoice</span>' : S.quickbooksConnected ? '<span class="muted">not created — check QB</span>' : '<span class="muted">paste a link per phase</span>')
+            : '<span class="muted">—</span>';
+        const actionCell = status === 'pending'
+          ? `<button class="btn small green" onclick="approveCO('${c.id}','${co.id}')">Approve on behalf</button> <button class="btn danger small" onclick="delCO('${c.id}','${co.id}')">Delete</button>`
+          : `<button class="btn danger small" onclick="delCO('${c.id}','${co.id}')">Delete</button>`;
+        return `<tr>
         <td class="muted" style="white-space:nowrap">${fmtDate(co.createdAt)}</td>
         <td>${esc(co.description)}</td>
         <td class="right money">${money(co.value)}</td>
-        <td>${co.qbInvoiceId
-          ? `<a class="btn small secondary" href="${esc(co.qbInvoiceUrl)}" target="_blank">📄 View</a>
-             ${c.email ? `<button class="btn small" onclick="sendCOInvoice('${c.id}','${co.id}')">📧 Send to Client</button>` : ''}`
-          : S.quickbooksConnected ? '<span class="muted">Creating…</span>' : '<span class="muted">—</span>'}</td>
-        <td class="right"><button class="btn danger small" onclick="delCO('${c.id}','${co.id}')">Delete</button></td>
-      </tr>`).join('') || '<tr><td colspan="5" class="muted">No change orders logged.</td></tr>'}
+        <td>${statusCell}</td>
+        <td>${invCell}</td>
+        <td class="right" style="white-space:nowrap">${actionCell}</td>
+      </tr>`;
+      }).join('') || '<tr><td colspan="6" class="muted">No change orders logged.</td></tr>'}
       </tbody></table>
     </div>`;
 }
@@ -980,9 +996,17 @@ window.addCO = function (id) {
 };
 window.addCO2 = async function (id) {
   try {
-    const r = await api('POST', `/api/clients/${id}/change-orders`, { description: $('#coDesc').value, value: $('#coVal').value });
+    await api('POST', `/api/clients/${id}/change-orders`, { description: $('#coDesc').value, value: $('#coVal').value });
     await reload(); closeModal(); route();
-    toast('Change order logged' + (S.quickbooksConnected ? (r.quickbooksError ? ' (QB error: ' + r.quickbooksError + ')' : ' — QB invoice created') : ''));
+    toast('Change order sent to the client for approval on their portal');
+  } catch (e) { toast(e.message, true); }
+};
+window.approveCO = async function (clientId, coId) {
+  if (!confirm('Approve this change order on the client\'s behalf?\n\nFor a positive charge this creates the QuickBooks invoice and requests payment — exactly as if the client approved it on their portal.')) return;
+  try {
+    const r = await api('POST', `/api/clients/${clientId}/change-orders/${coId}/approve`);
+    await reload(); route();
+    toast('Change order approved' + (r.quickbooksError ? ' (QB error: ' + r.quickbooksError + ')' : ''));
   } catch (e) { toast(e.message, true); }
 };
 window.sendCOInvoice = async function (clientId, coId) {
