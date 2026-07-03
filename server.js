@@ -95,7 +95,7 @@ function publicClientView(c) {
     })),
     selectedFinishes: (c.selectedFinishes || []).map(name => {
       const f = store.data.finishes.find(f => f.name === name || (f.brand + ' ' + f.name) === name);
-      return f ? { name: f.name, brand: f.brand, image: f.localImage || f.imageUrl, color: f.color } : { name };
+      return f ? { name: f.name, brand: f.brand, image: f.localImage || f.imageUrl, color: f.color, tier: f.tier } : { name };
     }),
     // Active Pebble finishes the client can choose from on the portal (no pricing).
     finishCatalog: (store.data.finishes || []).filter(f => f.active).map(f => ({
@@ -948,12 +948,19 @@ app.post('/api/portal/:token/change-orders/:coId/decline', (req, res) => {
 app.post('/api/portal/:token/select-finish', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
   const name = String(req.body.name || '').trim();
+  const isChange = !!req.body.isChange;
   const match = store.data.finishes.find(f => f.active && f.name === name);
   if (!match) return res.status(400).json({ error: 'Unknown finish' });
+  const prior = c.selectedFinishes[0];
   c.selectedFinishes = [match.name];
   // Record that the client (not the admin) made this pick, for the Design tab.
-  c.clientFinishChoice = { name: match.name, brand: match.brand, at: new Date().toISOString() };
-  store.addAlert(`${c.address}: client chose interior finish "${match.brand} ${match.name}" on the portal.`, { clientId: c.id, type: 'info' });
+  c.clientFinishChoice = { name: match.name, brand: match.brand, at: new Date().toISOString(), changed: isChange };
+  const tierNote = (match.tier && match.tier !== 'Standard') ? ` [${match.tier} — upgrade charge]` : '';
+  if (isChange) {
+    store.addAlert(`🎨 APPROVAL NEEDED: client CHANGED their interior finish${prior ? ` from "${prior}"` : ''} to "${match.brand} ${match.name}"${tierNote} on the portal. Please review & approve.`, { clientId: c.id, type: 'change' });
+  } else {
+    store.addAlert(`${c.address}: client confirmed interior finish "${match.brand} ${match.name}"${tierNote} on the portal.`, { clientId: c.id, type: 'info' });
+  }
   store.save();
   res.json(publicClientView(c));
 });
