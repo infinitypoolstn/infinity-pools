@@ -16,6 +16,11 @@
   .cols { display:flex; gap:18px; align-items:flex-start; }
   .cols .col { flex:1; min-width:0; }
   @media (max-width:840px) { .cols { flex-direction:column; gap:0; } }
+  .proj-switch { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  .proj-switch .lbl { font-size:13px; color:var(--mid); font-weight:700; }
+  .proj-switch .proj { border:1.5px solid var(--soft); background:#fff; color:var(--blue-dark); border-radius:999px; padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .proj-switch .proj:hover { border-color:var(--future); }
+  .proj-switch .proj.cur { background:var(--blue); border-color:var(--blue); color:#fff; cursor:default; }
   header { background:linear-gradient(135deg,var(--blue-dark),var(--blue)); color:#fff; border-radius:16px; padding:26px 30px; box-shadow:0 8px 30px rgba(10,94,168,.25); }
   header .brand { font-weight:800; letter-spacing:3px; font-size:18px; }
   header .brand .inf { font-size:26px; vertical-align:-3px; margin-right:6px; }
@@ -321,6 +326,13 @@ function finishSection(d) {
       ${confirmBar('14px')}
     </div>`;
 }
+// Switch to another of the client's projects. Their verified session works for
+// any project sharing their email, so we copy it under the target's key and go.
+window.switchProject = function (tok) {
+  const sid = localStorage.getItem(SESSION_KEY);
+  if (sid) localStorage.setItem('portalSession_' + tok, sid);
+  location.href = '/portal/' + tok;
+};
 window.pickFinish = function (name) { pendingFinish = name; renderPortal(PORTAL_D); };
 window.changeFinish = function () { finishChanging = true; pendingFinish = null; renderPortal(PORTAL_D); };
 window.cancelChangeFinish = function () { finishChanging = false; pendingFinish = null; renderPortal(PORTAL_D); };
@@ -514,6 +526,13 @@ function renderPortal(d) {
     </div>` : '';
 
   $('#wrap').innerHTML = `
+    ${(d.otherProjects && d.otherProjects.length > 1) ? `
+    <div class="proj-switch">
+      <span class="lbl">Your projects:</span>
+      ${d.otherProjects.map(p => p.current
+        ? `<span class="proj cur">${esc(p.address)}</span>`
+        : `<button class="proj" onclick="switchProject('${p.token}')">${esc(p.address)}</button>`).join('')}
+    </div>` : ''}
     <header>
       <div class="brand"><span class="inf">∞</span>INFINITY POOLS</div>
       <h1>${esc(d.address)}</h1>

@@ -78,12 +78,30 @@ const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
   res.status(500).json({ error: e.message });
 });
 
+// A project is reachable on the portal once its contract has been sent or signed
+// (and it isn't a lost deal). Used to group a client's projects by their email.
+function portalEligible(c) {
+  return !!(c.contract && (c.contract.sentAt || c.contract.signedAt)) && c.status !== 'lost';
+}
+// All portal projects sharing this client's email (the current one is always
+// included so the switcher can show it as selected).
+function siblingProjects(c) {
+  const email = (c.email || '').trim().toLowerCase();
+  const list = email
+    ? store.data.clients.filter(x => (x.email || '').trim().toLowerCase() === email && (x.id === c.id || portalEligible(x)))
+    : [c];
+  return list.map(x => ({ address: x.address, status: x.status, token: x.portalToken, current: x.id === c.id }));
+}
+
 // Strip internal-only data before anything client-facing is built from a record.
 function publicClientView(c) {
   const quote = store.quoteTotal(c);
   return {
     name: c.name, address: c.address,
     status: c.status,
+    // Every project this client (same email) can open on the portal — powers the
+    // "switch project" menu when they have more than one.
+    otherProjects: siblingProjects(c),
     phases: c.phases.map(p => ({
       key: p.key, name: p.name, drawPct: p.drawPct, time: p.time, status: p.status,
       dueDate: p.dueDate, completedAt: p.completedAt,
@@ -862,7 +880,9 @@ app.post('/api/portal/:token/verify', (req, res) => {
   }
   prunePortalSessions();
   const sessionId = crypto.randomBytes(32).toString('hex');
-  portalSessions.set(sessionId, { portalToken: req.params.token, expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+  // Session is scoped to the verified email, so it can open any of this person's
+  // projects (same email, contract sent) without re-verifying.
+  portalSessions.set(sessionId, { portalToken: req.params.token, email: submitted, expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
   res.json({ sessionId });
 });
 
@@ -875,9 +895,14 @@ function portalClient(req, res, { allowQuerySession = false } = {}) {
   // session as ?s=… instead. The portalToken + session together still gate access.
   const sessionId = req.headers['x-portal-session'] || (allowQuerySession ? req.query.s : null);
   const session = sessionId && portalSessions.get(sessionId);
-  if (!session || session.portalToken !== req.params.token || session.expires < Date.now()) {
-    res.status(401).json({ error: 'verify' }); return null;
-  }
+  // Valid if the session was issued for this exact project, OR it was verified for
+  // an email that also owns this (contract-sent) project — enabling seamless
+  // switching between a person's projects without re-verifying each one.
+  const ok = session && session.expires >= Date.now() && (
+    session.portalToken === req.params.token ||
+    (session.email && (c.email || '').trim().toLowerCase() === session.email && portalEligible(c))
+  );
+  if (!ok) { res.status(401).json({ error: 'verify' }); return null; }
   return c;
 }
 
