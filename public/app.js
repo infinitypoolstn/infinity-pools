@@ -1252,26 +1252,93 @@ function vDesign() {
   $('#main').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <h1 style="margin:0">Design Library — Pebble Finishes</h1>
-      <button class="btn secondary" onclick="runPebbleCheck()">🔄 Check pebbletec.com now</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="addColor()">＋ Add Color</button>
+        <button class="btn secondary" onclick="runPebbleCheck()">🔄 Check pebbletec.com now</button>
+      </div>
     </div>
     <p class="muted">Tiers follow the 2026 Pool Builder Rates sheet (pricing kept internal). Automatically verified against
       <a href="https://pebbletec.com/products/all-finishes/" target="_blank">pebbletec.com/products/all-finishes</a> every Monday at 7:00 AM CST —
       you'll get an email if a finish was added or removed. Last check: <b>${pc.lastRun ? fmtDate(pc.lastRun) : 'never'}</b>
       ${pc.lastResult ? (pc.lastResult.ok ? `(${pc.lastResult.added.length} new, ${pc.lastResult.missing.length} removed)` : '(failed: ' + esc(pc.lastResult.error) + ')') : ''}.
-      Click a swatch to toggle it active/retired.</p>
+      <b>Click any color to edit it</b> — change its tier (Standard / Upgrade / Premium…), retire it, or update its swatch.</p>
     ${brands.map(brand => {
       const tiers = tierOrder.filter(t => S.finishes.some(f => f.brand === brand && f.tier === t));
       if (!tiers.length) return '';
       return `<div class="card"><h2>${brand}</h2>${tiers.map(t => `
         <h3>${t === 'Brilliance' ? 'All Colors' : t + ' Tier'}</h3>
         <div class="swatch-grid">${S.finishes.filter(f => f.brand === brand && f.tier === t).map(f => `
-          <div class="swatch ${f.active ? '' : 'inactive'}" title="${f.active ? 'Active — click to retire' : 'Retired — click to restore'}" onclick="toggleFinishActive('${f.id}',${!f.active})">
+          <div class="swatch ${f.active ? '' : 'inactive'}" title="Click to edit tier, retire, or update this color" onclick="editColor('${f.id}')">
             ${f.localImage || f.imageUrl ? `<img loading="lazy" src="${f.localImage || f.imageUrl}" alt="${esc(f.name)}">` : `<div class="colorblock" style="background:${f.color}"></div>`}
-            <div class="nm">${esc(f.name)}${f.shimmer ? ' ✨' : ''}<small>${f.active ? 'active' : 'retired'}</small></div>
+            <div class="nm">${esc(f.name)}${f.shimmer ? ' ✨' : ''}<small>${esc(f.tier)} · ${f.active ? 'active' : 'retired'}</small></div>
           </div>`).join('')}</div>`).join('')}</div>`;
     }).join('')}`;
 }
-window.toggleFinishActive = async function (id, active) { await api('PUT', '/api/finishes/' + id, { active }); await reload(); route(); };
+const FINISH_TIERS = ['Standard', 'Upgrade', 'Premium', 'Extra Premium', 'Brilliance'];
+const FINISH_BRANDS = ['PebbleTec', 'PebbleSheen', 'PebbleFina', 'PebbleBrilliance'];
+function colorFormFields(f) {
+  f = f || {};
+  return `
+    <div class="row">
+      <label class="fld grow">Brand<select id="cfBrand">${FINISH_BRANDS.map(b => `<option ${f.brand === b ? 'selected' : ''}>${b}</option>`).join('')}</select></label>
+      <label class="fld grow">Tier (upgrade level)<select id="cfTier">${FINISH_TIERS.map(t => `<option ${f.tier === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    </div>
+    <label class="fld">Color Name<input type="text" id="cfName" value="${esc(f.name || '')}" placeholder="e.g. Egyptian Sands"></label>
+    <div class="row">
+      <label class="fld">Swatch Color<input type="color" id="cfColor" value="${esc(f.color || '#8fb8d4')}" style="height:42px;padding:2px"></label>
+      <label class="fld grow">Swatch Image URL (optional)<input type="text" id="cfImage" value="${esc(f.imageUrl || '')}" placeholder="https://…jpg — leave blank to use the color"></label>
+    </div>
+    <div style="display:flex;gap:18px;margin-top:6px">
+      <label class="check"><input type="checkbox" id="cfShimmer" ${f.shimmer ? 'checked' : ''}> ✨ Shimmer finish</label>
+      <label class="check"><input type="checkbox" id="cfActive" ${f.active !== false ? 'checked' : ''}> Active (clients can choose it on the portal)</label>
+    </div>`;
+}
+function colorFormValues() {
+  return {
+    brand: $('#cfBrand').value, tier: $('#cfTier').value, name: $('#cfName').value.trim(),
+    color: $('#cfColor').value, imageUrl: $('#cfImage').value.trim() || null,
+    shimmer: $('#cfShimmer').checked, active: $('#cfActive').checked,
+  };
+}
+window.addColor = function () {
+  modal(`<h2>Add Color to Design Library</h2>
+    ${colorFormFields({ tier: 'Upgrade', active: true })}
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button class="btn secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn" id="cfSave">Add Color</button></div>`, root => {
+    root.querySelector('#cfSave').onclick = async () => {
+      const v = colorFormValues();
+      if (!v.name) return toast('Color name is required', true);
+      try { await api('POST', '/api/finishes', v); await reload(); closeModal(); route(); toast('Color added to the library'); }
+      catch (e) { toast(e.message, true); }
+    };
+    $('#cfName').focus();
+  });
+};
+window.editColor = function (id) {
+  const f = S.finishes.find(x => x.id === id); if (!f) return;
+  modal(`<h2>Edit Color</h2>
+    ${colorFormFields(f)}
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px">
+      <button class="btn danger" id="cfDel">Delete</button>
+      <div style="display:flex;gap:10px">
+        <button class="btn secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn" id="cfSave">Save Changes</button>
+      </div>
+    </div>`, root => {
+    root.querySelector('#cfSave').onclick = async () => {
+      const v = colorFormValues();
+      if (!v.name) return toast('Color name is required', true);
+      try { await api('PUT', '/api/finishes/' + id, v); await reload(); closeModal(); route(); toast('Color updated'); }
+      catch (e) { toast(e.message, true); }
+    };
+    root.querySelector('#cfDel').onclick = async () => {
+      if (!confirm(`Delete "${f.name}" from the library?\n\nTo just hide it from clients, uncheck Active instead.`)) return;
+      try { await api('DELETE', '/api/finishes/' + id); await reload(); closeModal(); route(); toast('Color deleted'); }
+      catch (e) { toast(e.message, true); }
+    };
+  });
+};
 window.runPebbleCheck = async function () {
   toast('Checking pebbletec.com…');
   try {

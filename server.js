@@ -789,6 +789,12 @@ app.post('/api/finishes', (req, res) => {
   store.data.finishes.push(f); store.save(); res.json(f);
 });
 
+app.delete('/api/finishes/:id', (req, res) => {
+  const i = store.data.finishes.findIndex(f => f.id === req.params.id);
+  if (i === -1) return res.status(404).json({ error: 'Not found' });
+  store.data.finishes.splice(i, 1); store.save(); res.json({ ok: true });
+});
+
 app.post('/api/pebble-check/run', wrap(async (req, res) => {
   const result = await pebble.run({ sendEmail: !!req.body.sendEmail });
   res.json(result);
