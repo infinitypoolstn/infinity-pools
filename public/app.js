@@ -1542,9 +1542,7 @@ function vSettings() {
             <button class="btn danger small" onclick="this.closest('[data-scopesec]').remove()">Delete Section</button>
           </div>
           <div class="sm-items" style="margin-top:8px">
-          ${(sec.items || []).map(it => `<div class="row" style="align-items:center;margin-bottom:6px">
-            <input class="input grow sm-item" value="${esc(it)}">
-            <button class="btn danger small" onclick="this.closest('.row').remove()">✕</button></div>`).join('')}
+          ${(sec.items || []).map(it => smLineRowHTML(scopeText(it), scopeIndentOf(it))).join('')}
           </div>
           <button class="btn secondary small" onclick="smAddLine(this)">＋ Add line</button>
         </div>`).join('')}
@@ -1628,11 +1626,40 @@ window.ttAdd = function (phaseKey) {
       <button class="btn danger small" onclick="this.closest('[data-ttrow]').remove()">✕</button>
     </div>`);
 };
+// One master-template line row (DOM-based) with the same move/indent/delete
+// abilities as the per-client Scope tab.
+function smLineRowHTML(text, indent) {
+  indent = indent || 0;
+  return `<div class="row sm-line" data-indent="${indent}" style="align-items:center;margin-bottom:6px;padding-left:${indent * 28}px">
+    ${indent ? '<span class="sm-mark" style="color:var(--mid)">↳</span>' : ''}
+    <input class="input grow sm-item" value="${esc(text)}">
+    <button class="btn secondary small sm-out" title="Outdent" onclick="smIndent(this,-1)" ${indent === 0 ? 'disabled' : ''}>⇤</button>
+    <button class="btn secondary small sm-in" title="Indent as sub-item" onclick="smIndent(this,1)" ${indent >= SCOPE_MAX_INDENT ? 'disabled' : ''}>⇥</button>
+    <button class="btn secondary small" title="Move up" onclick="smMoveLine(this,-1)">↑</button>
+    <button class="btn secondary small" title="Move down" onclick="smMoveLine(this,1)">↓</button>
+    <button class="btn danger small" onclick="this.closest('.sm-line').remove()">✕</button></div>`;
+}
+window.smMoveLine = function (btn, dir) {
+  const row = btn.closest('.sm-line');
+  if (dir < 0 && row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling);
+  else if (dir > 0 && row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row);
+};
+window.smIndent = function (btn, dir) {
+  const row = btn.closest('.sm-line');
+  const ind = Math.max(0, Math.min(SCOPE_MAX_INDENT, (Number(row.dataset.indent) || 0) + dir));
+  row.dataset.indent = ind;
+  row.style.paddingLeft = (ind * 28) + 'px';
+  let mark = row.querySelector('.sm-mark');
+  if (ind && !mark) {
+    mark = document.createElement('span'); mark.className = 'sm-mark'; mark.style.color = 'var(--mid)'; mark.textContent = '↳';
+    row.insertBefore(mark, row.firstChild);
+  } else if (!ind && mark) { mark.remove(); }
+  const out = row.querySelector('.sm-out'), inb = row.querySelector('.sm-in');
+  if (out) out.disabled = ind === 0;
+  if (inb) inb.disabled = ind >= SCOPE_MAX_INDENT;
+};
 window.smAddLine = function (btn) {
-  btn.previousElementSibling.insertAdjacentHTML('beforeend', `
-    <div class="row" style="align-items:center;margin-bottom:6px">
-      <input class="input grow sm-item" value="">
-      <button class="btn danger small" onclick="this.closest('.row').remove()">✕</button></div>`);
+  btn.previousElementSibling.insertAdjacentHTML('beforeend', smLineRowHTML('', 0));
 };
 window.smAddSection = function () {
   const key = 'custom_' + Date.now().toString(36);
@@ -1642,9 +1669,7 @@ window.smAddSection = function () {
         <input class="input grow sm-title" placeholder="Section title" style="font-weight:700">
         <button class="btn danger small" onclick="this.closest('[data-scopesec]').remove()">Delete Section</button>
       </div>
-      <div class="sm-items" style="margin-top:8px">
-        <div class="row" style="align-items:center;margin-bottom:6px"><input class="input grow sm-item" value=""><button class="btn danger small" onclick="this.closest('.row').remove()">✕</button></div>
-      </div>
+      <div class="sm-items" style="margin-top:8px">${smLineRowHTML('', 0)}</div>
       <button class="btn secondary small" onclick="smAddLine(this)">＋ Add line</button>
     </div>`);
 };
@@ -1681,7 +1706,11 @@ window.settingsSave = async function () {
   const scopeTemplate = [...document.querySelectorAll('[data-scopesec]')].map(sec => ({
     key: sec.dataset.key || ('custom_' + Math.random().toString(36).slice(2, 8)),
     title: sec.querySelector('.sm-title').value,
-    items: [...sec.querySelectorAll('.sm-item')].map(i => i.value).filter(v => v.trim()),
+    items: [...sec.querySelectorAll('.sm-line')].map(row => {
+      const text = row.querySelector('.sm-item').value;
+      const indent = Number(row.dataset.indent) || 0;
+      return indent ? { text, indent } : text;
+    }).filter(it => (typeof it === 'string' ? it : it.text).trim()),
   })).filter(s => s.title.trim());
   await api('PUT', '/api/settings', {
     taskTemplates,
