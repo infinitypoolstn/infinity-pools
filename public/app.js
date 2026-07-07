@@ -362,6 +362,9 @@ function tSpecs(c) {
         <label class="fld grow">Number of Jets<input type="text" id="pb_jets" value="${esc(pb.jets)}" ${dis}></label>
         <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="pb_led" value="${esc(pb.ledLights)}" ${dis}></label>
       </div>
+      <div class="row">
+        <label class="fld grow">Equipment pad location<input type="text" id="pb_equippad" value="${esc(s.equipmentPad)}" ${dis}></label>
+      </div>
       <div style="margin-top:6px">
         <label class="check"><input type="checkbox" id="pb_sunshelf_inc" ${ss.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_sunshelf_wrap').style.display=this.checked?'':'none'"> Sun Shelf</label>
         <div id="pb_sunshelf_wrap" class="row" style="${ss.included ? '' : 'display:none'}"><label class="fld grow">Sun Shelf details<input type="text" id="pb_sunshelf_det" value="${esc(ss.details)}" ${dis}></label></div>
@@ -446,6 +449,7 @@ window.saveSpecs = async function (id) {
     waterFeature: { included: chk('wf_inc'), price: num('wf_price'), details: val('wf_det') },
     coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det'), ledLights: val('cp_led') },
     fireFeature: { included: chk('ff_inc'), price: num('ff_price'), details: val('ff_det') },
+    equipmentPad: val('pb_equippad'),
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value, price: Number(r.querySelector('.ao-price').value) || 0 })).filter(a => a.label.trim()),
   };
   try { await api('PUT', '/api/clients/' + id, { specs }); await reload(); toast('Pool specs saved — quote updated on Finance'); route(); }
