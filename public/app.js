@@ -468,6 +468,8 @@ function tScope(c) {
         </div>
         ${sec.items.map((it, j) => `<div class="row" style="align-items:center;margin-bottom:6px">
           <input class="input grow" data-scope="${i}:${j}" value="${esc(it)}">
+          <button class="btn secondary small" title="Move up" onclick="scopeMoveLine('${c.id}',${i},${j},-1)" ${j === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn secondary small" title="Move down" onclick="scopeMoveLine('${c.id}',${i},${j},1)" ${j === sec.items.length - 1 ? 'disabled' : ''}>↓</button>
           <button class="btn danger small" onclick="scopeDel('${c.id}',${i},${j})">✕</button></div>`).join('')}
         <button class="btn secondary small" onclick="scopeAdd('${c.id}',${i})">＋ Add line</button>
       </div>`).join('')}
@@ -492,6 +494,16 @@ window.scopeSave = async function (id, thenRoute = true) {
 };
 window.scopeAdd = async function (id, i) { await scopeSave(id, false); const c = client(id); c.scope[i].items.push(''); await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route(); };
 window.scopeDel = async function (id, i, j) { await scopeSave(id, false); const c = client(id); c.scope[i].items.splice(j, 1); await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route(); };
+window.scopeMoveLine = async function (id, i, j, dir) {
+  const nj = j + dir;
+  const c = client(id);
+  if (nj < 0 || nj >= c.scope[i].items.length) return;
+  await scopeSave(id, false); // persist any in-progress text edits first
+  const items = client(id).scope[i].items;
+  [items[j], items[nj]] = [items[nj], items[j]];
+  await api('PUT', '/api/clients/' + id, { scope: client(id).scope });
+  await reload(); route();
+};
 window.scopeSecAdd = async function (id) {
   await scopeSave(id, false);
   const c = client(id);
