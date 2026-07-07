@@ -396,6 +396,7 @@ function tSpecs(c) {
         <label class="fld grow">Size and Details<input type="text" id="cp_det" value="${esc(cp.details)}" ${dis}></label>
         <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="cp_led" value="${esc(cp.ledLights)}" ${dis}></label>
       </div>
+      <div class="row"><label class="fld grow">Additional Details<input type="text" id="cp_addl" value="${esc(cp.additionalDetails)}" ${dis}></label></div>
     </div>
     ${detailSection('ff_inc', 'Fire Feature', 'ff_price', ff.included, ff.price, 'ff_det', ff.details)}
 
@@ -447,7 +448,7 @@ window.saveSpecs = async function (id) {
     },
     spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led'), details: val('spa_det') },
     waterFeature: { included: chk('wf_inc'), price: num('wf_price'), details: val('wf_det') },
-    coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det'), ledLights: val('cp_led') },
+    coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det'), ledLights: val('cp_led'), additionalDetails: val('cp_addl') },
     fireFeature: { included: chk('ff_inc'), price: num('ff_price'), details: val('ff_det') },
     equipmentPad: val('pb_equippad'),
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value, price: Number(r.querySelector('.ao-price').value) || 0 })).filter(a => a.label.trim()),
@@ -473,6 +474,11 @@ function tScope(c) {
           <button class="btn danger small" onclick="scopeDel('${c.id}',${i},${j})">✕</button></div>`).join('')}
         <button class="btn secondary small" onclick="scopeAdd('${c.id}',${i})">＋ Add line</button>
       </div>`).join('')}
+    <div class="card">
+      <h2>Project Overview</h2>
+      <p class="muted" style="margin-top:0">This paragraph appears on the contract, below the pool sections. Edit it for this client, or leave the standard text.</p>
+      <textarea class="input" id="scopeOverview" style="min-height:150px">${esc(c.projectOverview || '')}</textarea>
+    </div>
     <div class="row" style="gap:10px">
       <button class="btn secondary" onclick="scopeSecAdd('${c.id}')">＋ Add Section</button>
       <button class="btn" onclick="scopeSave('${c.id}')">💾 Save Scope of Work</button>
@@ -489,7 +495,10 @@ window.scopeSave = async function (id, thenRoute = true) {
     const [i, j] = inp.dataset.scope.split(':').map(Number);
     scope[i].items[j] = inp.value;
   });
-  await api('PUT', '/api/clients/' + id, { scope });
+  const ov = $('#scopeOverview');
+  const body = { scope };
+  if (ov) body.projectOverview = ov.value;
+  await api('PUT', '/api/clients/' + id, body);
   await reload(); if (thenRoute) { toast('Scope saved'); route(); }
 };
 window.scopeAdd = async function (id, i) { await scopeSave(id, false); const c = client(id); c.scope[i].items.push(''); await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route(); };
