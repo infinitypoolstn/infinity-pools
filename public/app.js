@@ -458,20 +458,27 @@ window.saveSpecs = async function (id) {
 };
 
 /* ---------- Scope tab ---------- */
+// A scope item is a plain string, or { text, indent } for indented sub-lines.
+const scopeText = it => typeof it === 'string' ? it : (it && it.text) || '';
+const scopeIndentOf = it => typeof it === 'string' ? 0 : ((it && it.indent) || 0);
+const SCOPE_MAX_INDENT = 2;
 function tScope(c) {
   $('#tabBody').innerHTML = `
-    <div class="banner info">Pre-populated from your standard contract. General descriptions only — sizes and dollar values live in Pool Specs and Finance. ${c.specsLocked ? 'Contract is signed: log substantive changes as Change Orders.' : 'Editable until the contract is signed.'}</div>
+    <div class="banner info">Pre-populated from your standard contract. General descriptions only — sizes and dollar values live in Pool Specs and Finance. ${c.specsLocked ? 'Contract is signed: log substantive changes as Change Orders.' : 'Editable until the contract is signed.'} Use ⇥ to indent a line as a sub-item.</div>
     ${c.scope.map((sec, i) => `
       <div class="card">
         <div class="row" style="align-items:center;margin-bottom:8px">
           <input class="input grow scope-title" data-scopetitle="${i}" value="${esc(sec.title)}" style="font-size:18px;font-weight:700">
           <button class="btn danger small" onclick="scopeSecDel('${c.id}',${i})">Delete Section</button>
         </div>
-        ${sec.items.map((it, j) => `<div class="row" style="align-items:center;margin-bottom:6px">
-          <input class="input grow" data-scope="${i}:${j}" value="${esc(it)}">
+        ${sec.items.map((it, j) => { const ind = scopeIndentOf(it); return `<div class="row" style="align-items:center;margin-bottom:6px;padding-left:${ind * 28}px">
+          ${ind ? '<span style="color:var(--mid)">↳</span>' : ''}
+          <input class="input grow" data-scope="${i}:${j}" data-indent="${ind}" value="${esc(scopeText(it))}">
+          <button class="btn secondary small" title="Outdent" onclick="scopeIndent('${c.id}',${i},${j},-1)" ${ind === 0 ? 'disabled' : ''}>⇤</button>
+          <button class="btn secondary small" title="Indent as sub-item" onclick="scopeIndent('${c.id}',${i},${j},1)" ${ind >= SCOPE_MAX_INDENT ? 'disabled' : ''}>⇥</button>
           <button class="btn secondary small" title="Move up" onclick="scopeMoveLine('${c.id}',${i},${j},-1)" ${j === 0 ? 'disabled' : ''}>↑</button>
           <button class="btn secondary small" title="Move down" onclick="scopeMoveLine('${c.id}',${i},${j},1)" ${j === sec.items.length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="btn danger small" onclick="scopeDel('${c.id}',${i},${j})">✕</button></div>`).join('')}
+          <button class="btn danger small" onclick="scopeDel('${c.id}',${i},${j})">✕</button></div>`; }).join('')}
         <button class="btn secondary small" onclick="scopeAdd('${c.id}',${i})">＋ Add line</button>
       </div>`).join('')}
     <div class="card">
@@ -493,7 +500,8 @@ window.scopeSave = async function (id, thenRoute = true) {
   });
   document.querySelectorAll('[data-scope]').forEach(inp => {
     const [i, j] = inp.dataset.scope.split(':').map(Number);
-    scope[i].items[j] = inp.value;
+    const indent = Number(inp.dataset.indent) || 0;
+    scope[i].items[j] = indent ? { text: inp.value, indent } : inp.value;
   });
   const ov = $('#scopeOverview');
   const body = { scope };
@@ -503,6 +511,15 @@ window.scopeSave = async function (id, thenRoute = true) {
 };
 window.scopeAdd = async function (id, i) { await scopeSave(id, false); const c = client(id); c.scope[i].items.push(''); await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route(); };
 window.scopeDel = async function (id, i, j) { await scopeSave(id, false); const c = client(id); c.scope[i].items.splice(j, 1); await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route(); };
+window.scopeIndent = async function (id, i, j, dir) {
+  await scopeSave(id, false); // persist in-progress edits (incl. current indents)
+  const items = client(id).scope[i].items;
+  const level = Math.max(0, Math.min(SCOPE_MAX_INDENT, scopeIndentOf(items[j]) + dir));
+  const text = scopeText(items[j]);
+  items[j] = level ? { text, indent: level } : text;
+  await api('PUT', '/api/clients/' + id, { scope: client(id).scope });
+  await reload(); route();
+};
 window.scopeMoveLine = async function (id, i, j, dir) {
   const nj = j + dir;
   const c = client(id);
