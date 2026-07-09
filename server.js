@@ -12,6 +12,7 @@ const mailer = require('./lib/mailer');
 const alerts = require('./lib/alerts');
 const pebble = require('./lib/pebble-check');
 const contractPdf = require('./lib/contract-pdf');
+const estimatePdf = require('./lib/estimate-pdf');
 const specIntakePdf = require('./lib/spec-intake-pdf');
 const specIntakeParse = require('./lib/spec-intake-parse');
 const quickbooks = require('./lib/quickbooks');
@@ -340,6 +341,35 @@ app.post('/api/clients/:id/phases/:key/request-payment', wrap(async (req, res) =
 app.get('/api/forms/pool-spec-intake.pdf', wrap(async (req, res) => {
   const file = await specIntakePdf.generate();
   res.download(file, 'Infinity Pools - Pool Spec Intake Form.pdf');
+}));
+
+// Pre-contract price estimate: a line-item PDF the customer reviews before the
+// formal contract. Preview/download for admin.
+app.get('/api/clients/:id/estimate.pdf', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const file = await estimatePdf.generate(c);
+  res.download(file, `${c.address.replace(/[^\w ]/g, '')} - Infinity Pools Estimate.pdf`);
+}));
+
+// Email the estimate PDF to the client, copying the company admin address so the
+// office keeps a record of what was quoted.
+app.post('/api/clients/:id/estimate/send', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const file = await estimatePdf.generate(c);
+  const rec = await mailer.send({
+    to: c.email,
+    cc: store.data.settings.companyEmail,
+    subject: `Your Infinity Pools estimate — ${c.address}`,
+    html: `<p>Hi ${c.name.split(' ')[0]},</p>
+      <p>Attached is a preliminary estimate for your pool project at <b>${c.address}</b>, totaling <b>${alerts.fmtMoney(store.quoteTotal(c))}</b>.</p>
+      <p>This is an estimate only — it lets you review the scope and pricing before we prepare your formal proposal and contract. Pricing may be refined after a final site evaluation and your selections.</p>
+      <p>Questions or changes? Just reply to this email and we'll be glad to help.</p><p>— Infinity Pools</p>`,
+    attachments: [{ filename: `${c.address} - Infinity Pools Estimate.pdf`, path: file }],
+  });
+  c.estimateSentAt = new Date().toISOString();
+  store.addAlert(`Estimate emailed to ${c.name} (${c.address})`, { clientId: c.id });
+  store.save();
+  res.json({ client: c, email: rec });
 }));
 
 app.get('/api/clients/:id/contract.pdf', wrap(async (req, res) => {

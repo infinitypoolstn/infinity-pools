@@ -754,6 +754,15 @@ function tContract(c) {
         </div></details>`;
 
   $('#tabBody').innerHTML = `
+    <div class="card">
+      <h2>Estimate</h2>
+      <p class="muted">A line-item price estimate to send the customer for review before their contract. Copies ${esc((S.settings && S.settings.companyEmail) || 'the office')} on the email.</p>
+      <p class="muted">Sent: ${c.estimateSentAt ? fmtDate(c.estimateSentAt) : 'not yet'}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn secondary" href="/api/clients/${c.id}/estimate.pdf" target="_blank">⬇ Preview Estimate PDF</a>
+        <button class="btn secondary" onclick="sendEstimate('${c.id}')">📧 Email Estimate to Client</button>
+      </div>
+    </div>
     <div class="row">
       <div class="card grow" style="min-width:340px">
         <h2>Contract</h2>
@@ -805,6 +814,13 @@ window.sendContract = async function (id) {
     const r = await api('POST', `/api/clients/${id}/contract/send`);
     await reload(); route();
     toast(r.email.status === 'sent' ? 'Contract emailed to client' : 'Contract generated; email logged (Gmail not configured)');
+  } catch (e) { toast(e.message, true); }
+};
+window.sendEstimate = async function (id) {
+  try {
+    const r = await api('POST', `/api/clients/${id}/estimate/send`);
+    await reload(); route();
+    toast(r.email.status === 'sent' ? 'Estimate emailed to client (copy to office)' : 'Estimate generated; email logged (Gmail not configured)');
   } catch (e) { toast(e.message, true); }
 };
 window.markSigned = async function (id) {
