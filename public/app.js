@@ -60,9 +60,11 @@ window.addEventListener('hashchange', route);
 
 /* ============================== DASHBOARD ============================== */
 function vDashboard() {
-  const active = S.clients.filter(c => c.status === 'active');
-  const prospects = S.clients.filter(c => ['prospect', 'contract_sent'].includes(c.status));
-  const signed = S.clients.filter(c => ['active', 'completed'].includes(c.status));
+  // Test jobs are excluded from the metric totals below (they still show in the Projects list).
+  const real = S.clients.filter(c => !c.testMode);
+  const active = real.filter(c => c.status === 'active');
+  const prospects = real.filter(c => ['prospect', 'contract_sent'].includes(c.status));
+  const signed = real.filter(c => ['active', 'completed'].includes(c.status));
   const pipeline = prospects.reduce((a, c) => a + c._quote, 0);
   const contracted = signed.reduce((a, c) => a + c._quote + c._coTotal, 0);
   const collectedTotal = signed.reduce((a, c) => a + c._collected, 0);
@@ -70,7 +72,8 @@ function vDashboard() {
   const costs = signed.reduce((a, c) => a + c._costs, 0);
   const profit = contracted - costs;
   const today = new Date().toISOString().slice(0, 10);
-  const overdueTasks = S.tasks.filter(t => t.status !== 'done' && t.dueDate && t.dueDate < today);
+  const testIds = new Set(S.clients.filter(c => c.testMode).map(c => c.id));
+  const overdueTasks = S.tasks.filter(t => t.status !== 'done' && t.dueDate && t.dueDate < today && !testIds.has(t.clientId));
   const soon = new Date(); soon.setDate(soon.getDate() + 7);
   const phasesDueSoon = active.flatMap(c => c.phases.filter(p => p.status === 'active' && p.dueDate && p.dueDate <= soon.toISOString().slice(0, 10)).map(p => ({ c, p })));
   const coTotal = signed.reduce((a, c) => a + c._coTotal, 0);
