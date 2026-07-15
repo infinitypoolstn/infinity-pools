@@ -413,8 +413,6 @@ function tSpecs(c) {
       ${incHead('fl_inc', 'Fire Lounge', 'fl_price', fl.included, fl.price)}
       <div class="row">
         <label class="fld grow">Size<input type="text" id="fl_size" value="${esc(fl.size)}" ${dis}></label>
-        <label class="fld grow">Number of Jets<input type="text" id="fl_jets" value="${esc(fl.jets)}" ${dis}></label>
-        <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="fl_led" value="${esc(fl.ledLights)}" ${dis}></label>
       </div>
       <div class="row"><label class="fld grow">Additional Details<input type="text" id="fl_det" value="${esc(fl.details)}" ${dis}></label></div>
       ${subItemsBlock('fl', fl.items)}
@@ -497,7 +495,7 @@ window.saveSpecs = async function (id) {
       ledgeSeating: { included: chk('pb_ledge_inc'), details: val('pb_ledge_det') },
     },
     spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led'), details: val('spa_det'), items: subItems('spa_items') },
-    fireLounge: { included: chk('fl_inc'), price: num('fl_price'), size: val('fl_size'), jets: val('fl_jets'), ledLights: val('fl_led'), details: val('fl_det'), items: subItems('fl_items') },
+    fireLounge: { included: chk('fl_inc'), price: num('fl_price'), size: val('fl_size'), details: val('fl_det'), items: subItems('fl_items') },
     waterFeature: { included: chk('wf_inc'), price: num('wf_price'), details: val('wf_det') },
     coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det'), ledLights: val('cp_led'), additionalDetails: val('cp_addl'), items: subItems('cp_items') },
     fireFeature: { included: chk('ff_inc'), price: num('ff_price'), details: val('ff_det') },
