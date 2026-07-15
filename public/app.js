@@ -318,15 +318,17 @@ window.startOverProject = async function (id) {
 /* ---------- Specs tab ---------- */
 function tSpecs(c) {
   const s = c.specs, dis = c.specsLocked ? 'disabled' : '';
-  const pb = s.poolBase || {}, spa = s.spaBase || {}, wf = s.waterFeature || {}, cp = s.coldPlunge || {}, ff = s.fireFeature || {};
+  const pb = s.poolBase || {}, spa = s.spaBase || {}, fl = s.fireLounge || {}, wf = s.waterFeature || {}, cp = s.coldPlunge || {}, ff = s.fireFeature || {};
   const ss = pb.sunShelf || {}, ls = pb.ledgeSeating || {}, sp = pb.spillover || {};
-  // live running total of every priced section that's included
+  const sumItems = arr => (arr || []).reduce((a, x) => a + (Number(x.price) || 0), 0);
+  // live running total of every priced section that's included (plus its line items)
   const initial = (Number(pb.price) || 0)
-    + (spa.included ? (Number(spa.price) || 0) : 0)
+    + (spa.included ? (Number(spa.price) || 0) + sumItems(spa.items) : 0)
+    + (fl.included ? (Number(fl.price) || 0) + sumItems(fl.items) : 0)
     + (wf.included ? (Number(wf.price) || 0) : 0)
-    + (cp.included ? (Number(cp.price) || 0) : 0)
+    + (cp.included ? (Number(cp.price) || 0) + sumItems(cp.items) : 0)
     + (ff.included ? (Number(ff.price) || 0) : 0)
-    + (s.addOns || []).reduce((a, x) => a + (Number(x.price) || 0), 0);
+    + sumItems(s.addOns);
   const price = (idAttr, val) => `<label class="fld" style="max-width:170px">Price ($)<input type="number" step="0.01" min="0" id="${idAttr}" value="${val || ''}" ${dis} oninput="spQuote()"></label>`;
   const incHead = (incId, label, priceId, inc, val) => `
     <div class="row" style="justify-content:space-between;align-items:center">
@@ -337,6 +339,20 @@ function tSpecs(c) {
     <div class="card">
       ${incHead(incId, label, priceId, inc, val)}
       <div class="row"><label class="fld grow">Size and Details<input type="text" id="${detId}" value="${esc(det)}" ${dis}></label></div>
+    </div>`;
+  // A section's extra priced line items (label + details + price) that roll into the
+  // quote. `secKey` prefixes the container id (spa_items / fl_items / cp_items).
+  const subItemRow = it => `
+    <div class="row" data-subitem style="align-items:flex-end">
+      <label class="fld grow">Item<input type="text" class="subitem-label" value="${esc(it.label)}" placeholder="e.g. Heater" ${dis}></label>
+      <label class="fld grow">Details<input type="text" class="subitem-value" value="${esc(it.value)}" ${dis}></label>
+      <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="subitem-price" value="${it.price || ''}" ${dis} oninput="spQuote()"></label>
+      ${!c.specsLocked ? '<button class="btn danger small" style="margin-bottom:12px" onclick="this.closest(\'[data-subitem]\').remove();spQuote()">✕</button>' : ''}
+    </div>`;
+  const subItemsBlock = (secKey, items) => `
+    <div style="margin-top:6px">
+      <div id="${secKey}_items">${(items || []).map(subItemRow).join('')}</div>
+      ${!c.specsLocked ? `<button class="btn secondary small" onclick="addSubItemRow('${secKey}_items')">＋ Add priced item</button>` : ''}
     </div>`;
   $('#tabBody').innerHTML = `
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;background:var(--blue-soft)">
@@ -390,6 +406,18 @@ function tSpecs(c) {
         <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="spa_led" value="${esc(spa.ledLights)}" ${dis}></label>
       </div>
       <div class="row"><label class="fld grow">Additional Details<input type="text" id="spa_det" value="${esc(spa.details)}" ${dis}></label></div>
+      ${subItemsBlock('spa', spa.items)}
+    </div>
+
+    <div class="card">
+      ${incHead('fl_inc', 'Fire Lounge', 'fl_price', fl.included, fl.price)}
+      <div class="row">
+        <label class="fld grow">Size<input type="text" id="fl_size" value="${esc(fl.size)}" ${dis}></label>
+        <label class="fld grow">Number of Jets<input type="text" id="fl_jets" value="${esc(fl.jets)}" ${dis}></label>
+        <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="fl_led" value="${esc(fl.ledLights)}" ${dis}></label>
+      </div>
+      <div class="row"><label class="fld grow">Additional Details<input type="text" id="fl_det" value="${esc(fl.details)}" ${dis}></label></div>
+      ${subItemsBlock('fl', fl.items)}
     </div>
 
     ${detailSection('wf_inc', 'Water Feature', 'wf_price', wf.included, wf.price, 'wf_det', wf.details)}
@@ -400,6 +428,7 @@ function tSpecs(c) {
         <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="cp_led" value="${esc(cp.ledLights)}" ${dis}></label>
       </div>
       <div class="row"><label class="fld grow">Additional Details<input type="text" id="cp_addl" value="${esc(cp.additionalDetails)}" ${dis}></label></div>
+      ${subItemsBlock('cp', cp.items)}
     </div>
     ${detailSection('ff_inc', 'Fire Feature', 'ff_price', ff.included, ff.price, 'ff_det', ff.details)}
 
@@ -419,13 +448,25 @@ function tSpecs(c) {
 window.spQuote = function () {
   const v = i => { const el = document.getElementById(i); return el ? Number(el.value) || 0 : 0; };
   const on = i => { const el = document.getElementById(i); return el ? el.checked : false; };
+  const sub = id => { const el = document.getElementById(id); return el ? [...el.querySelectorAll('.subitem-price')].reduce((a, i) => a + (Number(i.value) || 0), 0) : 0; };
   let t = v('pb_price');
-  if (on('spa_inc')) t += v('spa_price');
+  if (on('spa_inc')) t += v('spa_price') + sub('spa_items');
+  if (on('fl_inc')) t += v('fl_price') + sub('fl_items');
   if (on('wf_inc')) t += v('wf_price');
-  if (on('cp_inc')) t += v('cp_price');
+  if (on('cp_inc')) t += v('cp_price') + sub('cp_items');
   if (on('ff_inc')) t += v('ff_price');
   t += [...document.querySelectorAll('.ao-price')].reduce((a, i) => a + (Number(i.value) || 0), 0);
   const el = document.getElementById('spQuoteEl'); if (el) el.textContent = money(t);
+};
+window.addSubItemRow = function (containerId) {
+  const el = document.getElementById(containerId); if (!el) return;
+  el.insertAdjacentHTML('beforeend', `
+    <div class="row" data-subitem style="align-items:flex-end">
+      <label class="fld grow">Item<input type="text" class="subitem-label" placeholder="e.g. Heater"></label>
+      <label class="fld grow">Details<input type="text" class="subitem-value"></label>
+      <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="subitem-price" oninput="spQuote()"></label>
+      <button class="btn danger small" style="margin-bottom:12px" onclick="this.closest('[data-subitem]').remove();spQuote()">✕</button>
+    </div>`);
 };
 window.addAddonRow = function () {
   $('#addOnList').insertAdjacentHTML('beforeend', `
@@ -440,6 +481,12 @@ window.saveSpecs = async function (id) {
   const val = i => { const el = document.getElementById(i); return el ? el.value : ''; };
   const num = i => Number(val(i)) || 0;
   const chk = i => { const el = document.getElementById(i); return el ? el.checked : false; };
+  const subItems = containerId => {
+    const el = document.getElementById(containerId); if (!el) return [];
+    return [...el.querySelectorAll('[data-subitem]')]
+      .map(r => ({ label: r.querySelector('.subitem-label').value, value: r.querySelector('.subitem-value').value, price: Number(r.querySelector('.subitem-price').value) || 0 }))
+      .filter(x => x.label.trim());
+  };
   const specs = {
     poolBase: {
       price: num('pb_price'), shape: val('pb_shape'), freeform: val('pb_freeform'),
@@ -449,9 +496,10 @@ window.saveSpecs = async function (id) {
       spillover: { included: chk('pb_spillover_inc'), details: val('pb_spillover_det') },
       ledgeSeating: { included: chk('pb_ledge_inc'), details: val('pb_ledge_det') },
     },
-    spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led'), details: val('spa_det') },
+    spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led'), details: val('spa_det'), items: subItems('spa_items') },
+    fireLounge: { included: chk('fl_inc'), price: num('fl_price'), size: val('fl_size'), jets: val('fl_jets'), ledLights: val('fl_led'), details: val('fl_det'), items: subItems('fl_items') },
     waterFeature: { included: chk('wf_inc'), price: num('wf_price'), details: val('wf_det') },
-    coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det'), ledLights: val('cp_led'), additionalDetails: val('cp_addl') },
+    coldPlunge: { included: chk('cp_inc'), price: num('cp_price'), details: val('cp_det'), ledLights: val('cp_led'), additionalDetails: val('cp_addl'), items: subItems('cp_items') },
     fireFeature: { included: chk('ff_inc'), price: num('ff_price'), details: val('ff_det') },
     equipmentPad: val('pb_equippad'),
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value, price: Number(r.querySelector('.ao-price').value) || 0 })).filter(a => a.label.trim()),
