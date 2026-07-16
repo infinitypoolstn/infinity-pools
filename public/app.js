@@ -763,19 +763,57 @@ window.doUpload = async function (id) {
   }
   catch (e) { toast(e.message, true); }
 };
+// In-window image gallery. Opens the clicked image and lets you page through all
+// of the client's images (prev/next, thumbnail strip, ← → keys) and toggle
+// between fit-to-window and full (actual) size — no new tab.
+let galleryState = null; // { id, imgs: [file], idx, fit }
 window.previewImg = function (id, fid) {
-  const c = client(id); const f = c && c.files.find(x => x.id === fid);
-  if (!f) return;
-  const src = `/uploads/${id}/${encodeURIComponent(f.storedName)}`;
-  modal(`<h2 style="margin:0 0 10px">${esc(f.originalName)}</h2>
-    <div style="text-align:center;background:var(--blue-pale);border-radius:8px;padding:8px">
-      <img src="${src}" alt="${esc(f.originalName)}" style="max-width:100%;max-height:68vh;border-radius:4px">
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
-      <a class="btn secondary" href="${src}" target="_blank">Open full size</a>
-      <button class="btn" onclick="closeModal()">Close</button>
-    </div>`);
+  const c = client(id); if (!c) return;
+  const imgs = c.files.filter(f => IMG_RE.test(f.originalName));
+  const idx = imgs.findIndex(f => f.id === fid);
+  if (idx < 0) return;
+  galleryState = { id, imgs, idx, fit: true };
+  renderGallery();
 };
+function renderGallery() {
+  const g = galleryState; if (!g) return;
+  const f = g.imgs[g.idx];
+  const src = i => `/uploads/${g.id}/${encodeURIComponent(g.imgs[i].storedName)}`;
+  const multi = g.imgs.length > 1;
+  const imgStyle = g.fit ? 'max-height:64vh;max-width:100%' : 'max-width:none;max-height:none';
+  modal(`<div class="gallery">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
+      <h2 style="margin:0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.originalName)}</h2>
+      <span class="muted" style="white-space:nowrap">${g.idx + 1} of ${g.imgs.length}</span>
+    </div>
+    <div class="gallery-stage ${g.fit ? 'fit' : 'full'}">
+      ${multi ? '<button class="gallery-nav prev" title="Previous (←)" onclick="galleryNav(-1)">‹</button>' : ''}
+      <img src="${src(g.idx)}" alt="${esc(f.originalName)}" style="${imgStyle}">
+      ${multi ? '<button class="gallery-nav next" title="Next (→)" onclick="galleryNav(1)">›</button>' : ''}
+    </div>
+    ${multi ? `<div class="gallery-strip">${g.imgs.map((im, i) =>
+      `<img src="${src(i)}" class="${i === g.idx ? 'active' : ''}" title="${esc(im.originalName)}" onclick="galleryJump(${i})">`).join('')}</div>` : ''}
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:12px">
+      <button class="btn secondary" onclick="galleryToggleFit()">${g.fit ? '⤢ Full size' : '⤡ Fit to window'}</button>
+      <a class="btn secondary" href="/api/clients/${g.id}/files/${f.id}/download">⬇ Download</a>
+      <button class="btn" onclick="closeModal()">Close</button>
+    </div>
+  </div>`, root => {
+    const m = root.querySelector('.modal');
+    if (m) { m.style.width = 'min(1120px, 96vw)'; m.style.maxWidth = '96vw'; }
+    const act = root.querySelector('.gallery-strip img.active');
+    if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest' });
+  });
+}
+window.galleryNav = function (d) { const g = galleryState; if (!g) return; const n = g.imgs.length; g.idx = (g.idx + d + n) % n; renderGallery(); };
+window.galleryJump = function (i) { if (!galleryState) return; galleryState.idx = i; renderGallery(); };
+window.galleryToggleFit = function () { if (!galleryState) return; galleryState.fit = !galleryState.fit; renderGallery(); };
+document.addEventListener('keydown', e => {
+  if (!galleryState || !document.querySelector('#modalRoot .gallery')) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); galleryNav(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); galleryNav(1); }
+  else if (e.key === 'Escape') { closeModal(); }
+});
 window.setCover = async function (id, fid, on) { await api('POST', `/api/clients/${id}/files/${fid}/cover`, { isCoverPhoto: on }); await reload(); route(); toast(on ? 'Set as contract cover photo' : 'Cover photo removed'); };
 window.setVisibility = async function (id, fid, on) { await api('POST', `/api/clients/${id}/files/${fid}/visibility`, { clientVisible: on }); await reload(); route(); toast(on ? 'File is now visible on the client portal' : 'File hidden from the client portal'); };
 window.delFile = async function (id, fid) { if (!confirm('Delete this file?')) return; await api('DELETE', `/api/clients/${id}/files/${fid}`); await reload(); route(); };

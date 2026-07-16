@@ -131,6 +131,19 @@ table.tbl tr:hover td { background: var(--blue-pale); }
 .modal { background: #fff; border-radius: 14px; padding: 24px 26px; width: 520px; max-width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 18px 60px rgba(0,0,0,.25); }
 .modal h2 { margin-top: 0; }
 
+/* in-window image gallery / lightbox */
+.gallery-stage { position: relative; background: #0b2136; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.gallery-stage.fit { max-height: 64vh; overflow: hidden; }
+.gallery-stage.full { max-height: 64vh; overflow: auto; }
+.gallery-stage img { display: block; }
+.gallery-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,.42); color: #fff; border: 0; width: 42px; height: 66px; font-size: 30px; line-height: 1; cursor: pointer; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.gallery-nav:hover { background: rgba(0,0,0,.72); }
+.gallery-nav.prev { left: 8px; } .gallery-nav.next { right: 8px; }
+.gallery-strip { display: flex; gap: 6px; overflow-x: auto; padding: 8px 2px; margin-top: 4px; }
+.gallery-strip img { height: 52px; width: 72px; object-fit: cover; border-radius: 6px; border: 2px solid transparent; cursor: pointer; flex: none; opacity: .7; }
+.gallery-strip img:hover { opacity: 1; }
+.gallery-strip img.active { border-color: var(--blue); opacity: 1; }
+
 .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--blue-soft); margin-bottom: 18px; flex-wrap: wrap; }
 .tabs button { background: none; border: none; padding: 9px 15px; font-size: 13.5px; font-weight: 600; color: var(--mid); cursor: pointer; border-radius: 8px 8px 0 0; }
 .tabs button.active { color: var(--blue-dark); background: var(--blue-pale); box-shadow: inset 0 -2px 0 var(--blue); }
