@@ -158,7 +158,7 @@ function dashProjectsHTML() {
     const profit = c._quote + c._coTotal - c._costs;
     return `<tr style="cursor:pointer" onclick="location.hash='#/client/${c.id}'">
       <td>${c.testMode ? '<span class="chip" style="background:#fde8c8;color:#8a5a10;margin-right:6px">🧪 TEST</span>' : ''}<b>${esc(c.address) || '<i>no address</i>'}</b><div class="muted">${esc(c.name)}</div></td>
-      <td><span class="chip ${c.status}">${statusLabel[c.status]}</span></td>
+      <td><span class="chip ${c.status}">${statusLabel[c.status]}</span>${c.targetFinishDate ? `<div class="muted">🎯 finish ${fmtDate(c.targetFinishDate)}</div>` : ''}</td>
       <td>${c._currentPhase ? `<span class="chip phase">${esc(c._currentPhase.name)}</span>${c._currentPhase.dueDate ? `<div class="muted">due ${fmtDate(c._currentPhase.dueDate)}</div>` : ''}` : c.status === 'completed' ? '🏁 Done' : '—'}</td>
       <td><div class="progress"><div style="width:${phasePct(c)}%"></div></div></td>
       <td class="right money">${money(c._quote)}</td>
@@ -290,6 +290,7 @@ window.editClientInfo = function (id) {
     <label class="fld">Email<input type="email" id="eEmail" value="${esc(c.email)}"></label>
     <label class="fld">Phone<input type="tel" id="ePhone" value="${esc(c.phone)}"></label>
     <label class="fld">Status<select id="eStatus">${Object.entries(statusLabel).map(([k, v]) => `<option value="${k}" ${c.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    <label class="fld">Target Finish Date<input type="date" id="eFinish" value="${c.targetFinishDate || ''}"></label>
     <div style="display:flex;gap:10px;justify-content:space-between;margin-top:14px">
       <span><button class="btn danger" onclick="deleteClient('${c.id}')">Delete</button>
       <button class="btn secondary" onclick="startOverProject('${c.id}')">Cancel / Start Over</button></span>
@@ -299,7 +300,7 @@ window.editClientInfo = function (id) {
 };
 window.saveClientInfo = async function (id) {
   try {
-    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, phone: $('#ePhone').value, status: $('#eStatus').value });
+    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, phone: $('#ePhone').value, status: $('#eStatus').value, targetFinishDate: $('#eFinish').value || null });
     await reload(); closeModal(); route(); toast('Saved');
   } catch (e) { toast(e.message, true); }
 };
