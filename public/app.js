@@ -8,6 +8,7 @@ const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const fmtDateTime = d => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
 const ago = d => { const m = (Date.now() - new Date(d)) / 60000; if (m < 60) return Math.max(1, m | 0) + 'm ago'; if (m < 1440) return (m / 60 | 0) + 'h ago'; return (m / 1440 | 0) + 'd ago'; };
 
 async function api(method, url, body) {
@@ -1176,6 +1177,21 @@ window.costSave = async function (id) {
 };
 
 /* ---------- Portal tab ---------- */
+// Whether/when the client has opened their portal, with a short visit log.
+function portalAccessHTML(c) {
+  const pa = c.portalAccess || {};
+  if (!pa.lastAt) {
+    return `<div class="banner info" style="margin-top:8px">👁 The client hasn't opened their portal yet.${c.contract.portalLinkSentAt ? '' : ' Email them the link above so they can.'}</div>`;
+  }
+  const times = pa.count === 1 ? 'once' : `${pa.count} times`;
+  const rows = (pa.log || []).map(v =>
+    `<li style="margin:2px 0">${fmtDateTime(v.at)} <span class="muted">· ${ago(v.at)}${v.ip ? ' · ' + esc(v.ip) : ''}</span></li>`).join('');
+  return `<div class="card" style="background:var(--blue-soft);margin-top:8px">
+      <p style="margin:0 0 4px"><b>👁 Client has opened their portal</b> — ${times}.</p>
+      <p class="muted" style="margin:0 0 6px">First: ${fmtDateTime(pa.firstAt)} · Last: ${fmtDateTime(pa.lastAt)} (${ago(pa.lastAt)})</p>
+      ${rows ? `<details><summary class="muted" style="cursor:pointer">Recent visits</summary><ul style="margin:6px 0 0;padding-left:18px;font-size:13px">${rows}</ul></details>` : ''}
+    </div>`;
+}
 function tPortal(c) {
   const url = location.origin + '/portal/' + c.portalToken;
   $('#tabBody').innerHTML = `
@@ -1191,6 +1207,7 @@ function tPortal(c) {
           : `<button class="btn" disabled title="No email address on file for this client">📧 Email to Client</button>`}
       </div>
       ${c.contract.portalLinkSentAt ? `<p class="muted" style="margin-top:6px">Last emailed ${fmtDate(c.contract.portalLinkSentAt)}${c.email ? ' → ' + esc(c.email) : ''}</p>` : ''}
+      ${portalAccessHTML(c)}
       <h3>Client To-Do Items (shown as alerts on their page)</h3>
       <div id="todoList">${(c.clientTodos || []).map(t => `
         <div class="row" data-todo style="align-items:center;margin-bottom:6px">

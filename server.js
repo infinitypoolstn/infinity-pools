@@ -955,8 +955,28 @@ app.get('/api/portal/:token/files/:fileId', (req, res) => {
   res.sendFile(p); // inline — images render in the gallery, PDFs open in a tab
 });
 
+// Record a portal view. Fires on the authenticated bootstrap load, so it means the
+// (email-verified) client actually opened their portal — not a link scanner. Rapid
+// repeats/polls within 30 min collapse into a single visit in the log.
+function recordPortalVisit(c, req) {
+  const now = Date.now();
+  const nowIso = new Date().toISOString();
+  const pa = c.portalAccess || (c.portalAccess = { firstAt: null, lastAt: null, count: 0, log: [] });
+  const lastMs = pa.lastAt ? new Date(pa.lastAt).getTime() : 0;
+  if (!pa.firstAt) pa.firstAt = nowIso;
+  pa.lastAt = nowIso;
+  if (now - lastMs > 30 * 60 * 1000) {
+    pa.count = (pa.count || 0) + 1;
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+    pa.log.unshift({ at: nowIso, ip });
+    if (pa.log.length > 25) pa.log.length = 25;
+  }
+  store.save();
+}
+
 app.get('/api/portal/:token', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
+  recordPortalVisit(c, req);
   res.json(publicClientView(c));
 });
 
