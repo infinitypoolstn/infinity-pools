@@ -93,7 +93,8 @@ function vDashboard() {
       </div>
     </div>
     ${!S.gmailConfigured ? '<div class="banner warn" style="margin-top:14px">📧 Gmail is not connected yet — emails are logged but not sent. Set it up in <a href="#/settings">Settings → Email</a>.</div>' : ''}
-    <div class="card" style="background:var(--blue-pale);margin-top:16px">
+    <div class="row" style="margin-top:16px;align-items:flex-start">
+    <div class="card grow" style="background:var(--blue-pale);min-width:330px;margin-bottom:0">
       <h2>Builds &amp; Prospects</h2>
       <div class="row">
         <div class="metric"><div class="v">${active.length}</div><div class="l">Active Builds</div></div>
@@ -102,7 +103,7 @@ function vDashboard() {
         <div class="metric"><div class="v">${real.length}</div><div class="l">Total Projects</div></div>
       </div>
     </div>
-    <div class="card" style="background:var(--blue-pale)">
+    <div class="card grow" style="background:var(--blue-pale);min-width:330px;margin-bottom:0">
       <h2>Financials</h2>
       <div class="row">
         <div class="metric"><div class="v">${money(pipeline)}</div><div class="l">Pipeline Value</div></div>
@@ -113,26 +114,27 @@ function vDashboard() {
         <div class="metric ${profit >= 0 ? 'good' : 'bad'}"><div class="v">${money(profit)}</div><div class="l">Est. Profit (signed jobs)</div></div>
       </div>
     </div>
-    <div class="card" style="background:var(--blue-pale)">
+    <div class="card grow" style="background:var(--blue-pale);min-width:330px;margin-bottom:0">
       <h2>Tasks &amp; Deadlines</h2>
       <div class="row">
         <div class="metric ${overdueTasks.length ? 'bad' : ''}"><div class="v">${overdueTasks.length}</div><div class="l">Overdue Tasks</div></div>
         <div class="metric ${phasesDueSoon.length ? 'warn' : ''}"><div class="v">${phasesDueSoon.length}</div><div class="l">Phases Due ≤ 7d</div></div>
       </div>
       <div class="row" style="margin-top:14px">
-        <div class="card grow" style="margin:0;min-width:300px">
+        <div class="card grow" style="margin:0;min-width:200px">
           <h3 style="margin-top:0">⚠ Overdue Tasks</h3>
           ${overdueSorted.length ? `<ul style="margin:0;padding-left:18px;font-size:13px">${overdueSorted.slice(0, 6).map(t => {
             const cl = cById[t.clientId];
             return `<li style="margin:3px 0">${cl ? `<a href="#/client/${t.clientId}">${esc(t.title)}</a>` : esc(t.title)} <span class="muted">· ${cl ? esc(cl.address || cl.name) + ' · ' : ''}due ${fmtDate(t.dueDate)}</span></li>`;
           }).join('')}</ul>${overdueSorted.length > 6 ? `<p class="muted" style="margin:6px 0 0">+ ${overdueSorted.length - 6} more — see <a href="#/tasks">Tasks</a></p>` : ''}` : '<p class="muted" style="margin:0">Nothing overdue 🎉</p>'}
         </div>
-        <div class="card grow" style="margin:0;min-width:300px">
+        <div class="card grow" style="margin:0;min-width:200px">
           <h3 style="margin-top:0">📅 Phases Due ≤ 7 Days</h3>
           ${phasesDueSoon.length ? `<ul style="margin:0;padding-left:18px;font-size:13px">${phasesDueSoon.slice(0, 6).map(({ c, p }) =>
             `<li style="margin:3px 0"><a href="#/client/${c.id}">${esc(c.address || c.name)}</a> <span class="muted">· ${esc(p.name)} · due ${fmtDate(p.dueDate)}</span></li>`).join('')}</ul>${phasesDueSoon.length > 6 ? `<p class="muted" style="margin:6px 0 0">+ ${phasesDueSoon.length - 6} more</p>` : ''}` : '<p class="muted" style="margin:0">Nothing due this week.</p>'}
         </div>
       </div>
+    </div>
     </div>
     <div class="row">
       <div class="card grow" style="min-width:380px">
