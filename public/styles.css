@@ -97,6 +97,15 @@ table.tbl tr:hover td { background: var(--blue-pale); }
 .metric.warn .v { color: var(--amber); }
 .metric.bad .v { color: var(--red); }
 .metric.good .v { color: var(--green); }
+/* Compact stat rows — a dense label/value list used on the dashboard sections. */
+.statgrid { background: var(--white); border: 1px solid var(--blue-soft); border-radius: var(--radius); box-shadow: var(--shadow); padding: 4px 12px; }
+.statline { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--blue-soft); }
+.statline:last-child { border-bottom: 0; }
+.statline .sl-l { font-size: 12px; color: var(--mid); font-weight: 600; }
+.statline .sl-v { font-size: 16px; font-weight: 800; color: var(--blue-dark); white-space: nowrap; }
+.statline .sl-v.warn { color: var(--amber); }
+.statline .sl-v.bad { color: var(--red); }
+.statline .sl-v.good { color: var(--green); }
 
 .progress { height: 7px; background: var(--blue-pale); border-radius: 4px; overflow: hidden; min-width: 90px; }
 .progress > div { height: 100%; background: linear-gradient(90deg, var(--blue-mid), var(--blue)); border-radius: 4px; }

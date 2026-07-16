@@ -9,6 +9,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 const fmtDateTime = d => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const stat = (label, value, cls = '') => `<div class="statline"><span class="sl-l">${label}</span><span class="sl-v ${cls}">${value}</span></div>`;
 const ago = d => { const m = (Date.now() - new Date(d)) / 60000; if (m < 60) return Math.max(1, m | 0) + 'm ago'; if (m < 1440) return (m / 60 | 0) + 'h ago'; return (m / 1440 | 0) + 'd ago'; };
 
 async function api(method, url, body) {
@@ -96,39 +97,39 @@ function vDashboard() {
     <div class="row" style="margin-top:16px;align-items:flex-start">
     <div class="card grow" style="background:var(--blue-pale);min-width:330px;margin-bottom:0">
       <h2>Builds &amp; Prospects</h2>
-      <div class="row">
-        <div class="metric"><div class="v">${active.length}</div><div class="l">Active Builds</div></div>
-        <div class="metric"><div class="v">${prospects.length}</div><div class="l">Prospects</div></div>
-        <div class="metric"><div class="v">${completed.length}</div><div class="l">Completed</div></div>
-        <div class="metric"><div class="v">${real.length}</div><div class="l">Total Projects</div></div>
+      <div class="statgrid">
+        ${stat('Active Builds', active.length)}
+        ${stat('Prospects', prospects.length)}
+        ${stat('Completed', completed.length)}
+        ${stat('Total Projects', real.length)}
       </div>
     </div>
     <div class="card grow" style="background:var(--blue-pale);min-width:330px;margin-bottom:0">
       <h2>Financials</h2>
-      <div class="row">
-        <div class="metric"><div class="v">${money(pipeline)}</div><div class="l">Pipeline Value</div></div>
-        <div class="metric"><div class="v">${money(contracted)}</div><div class="l">Contracted + COs</div></div>
-        <div class="metric good"><div class="v">${money(collectedTotal)}</div><div class="l">Collected</div></div>
-        <div class="metric warn"><div class="v">${money(outstanding)}</div><div class="l">Outstanding Draws</div></div>
-        <div class="metric"><div class="v">${money(coTotal)}</div><div class="l">Change Orders</div></div>
-        <div class="metric ${profit >= 0 ? 'good' : 'bad'}"><div class="v">${money(profit)}</div><div class="l">Est. Profit (signed jobs)</div></div>
+      <div class="statgrid">
+        ${stat('Pipeline Value', money(pipeline))}
+        ${stat('Contracted + COs', money(contracted))}
+        ${stat('Collected', money(collectedTotal), 'good')}
+        ${stat('Outstanding Draws', money(outstanding), 'warn')}
+        ${stat('Change Orders', money(coTotal))}
+        ${stat('Est. Profit (signed)', money(profit), profit >= 0 ? 'good' : 'bad')}
       </div>
     </div>
     <div class="card grow" style="background:var(--blue-pale);min-width:330px;margin-bottom:0">
       <h2>Tasks &amp; Deadlines</h2>
-      <div class="row">
-        <div class="metric ${overdueTasks.length ? 'bad' : ''}"><div class="v">${overdueTasks.length}</div><div class="l">Overdue Tasks</div></div>
-        <div class="metric ${phasesDueSoon.length ? 'warn' : ''}"><div class="v">${phasesDueSoon.length}</div><div class="l">Phases Due ≤ 7d</div></div>
+      <div class="statgrid">
+        ${stat('Overdue Tasks', overdueTasks.length, overdueTasks.length ? 'bad' : '')}
+        ${stat('Phases Due ≤ 7d', phasesDueSoon.length, phasesDueSoon.length ? 'warn' : '')}
       </div>
-      <div class="row" style="margin-top:14px">
-        <div class="card grow" style="margin:0;min-width:200px">
+      <div class="row" style="margin-top:12px">
+        <div class="card grow" style="margin:0;min-width:200px;padding:12px">
           <h3 style="margin-top:0">⚠ Overdue Tasks</h3>
           ${overdueSorted.length ? `<ul style="margin:0;padding-left:18px;font-size:13px">${overdueSorted.slice(0, 6).map(t => {
             const cl = cById[t.clientId];
             return `<li style="margin:3px 0">${cl ? `<a href="#/client/${t.clientId}">${esc(t.title)}</a>` : esc(t.title)} <span class="muted">· ${cl ? esc(cl.address || cl.name) + ' · ' : ''}due ${fmtDate(t.dueDate)}</span></li>`;
           }).join('')}</ul>${overdueSorted.length > 6 ? `<p class="muted" style="margin:6px 0 0">+ ${overdueSorted.length - 6} more — see <a href="#/tasks">Tasks</a></p>` : ''}` : '<p class="muted" style="margin:0">Nothing overdue 🎉</p>'}
         </div>
-        <div class="card grow" style="margin:0;min-width:200px">
+        <div class="card grow" style="margin:0;min-width:200px;padding:12px">
           <h3 style="margin-top:0">📅 Phases Due ≤ 7 Days</h3>
           ${phasesDueSoon.length ? `<ul style="margin:0;padding-left:18px;font-size:13px">${phasesDueSoon.slice(0, 6).map(({ c, p }) =>
             `<li style="margin:3px 0"><a href="#/client/${c.id}">${esc(c.address || c.name)}</a> <span class="muted">· ${esc(p.name)} · due ${fmtDate(p.dueDate)}</span></li>`).join('')}</ul>${phasesDueSoon.length > 6 ? `<p class="muted" style="margin:6px 0 0">+ ${phasesDueSoon.length - 6} more</p>` : ''}` : '<p class="muted" style="margin:0">Nothing due this week.</p>'}
