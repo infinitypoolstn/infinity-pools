@@ -32,6 +32,15 @@ h1, h2, h3 { color: var(--blue-deep); }
   width: 218px; flex-shrink: 0; background: linear-gradient(180deg, var(--blue-dark), var(--blue-deep));
   color: #fff; padding: 18px 0; position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
+/* Wavy "waterline" separating the nav from the content. A vertical sine wave SVG
+   tiled down the seam at x = sidebar width (218px). Fixed so the sidebar's own
+   scroll/overflow can't clip it; pointer-events off so it never blocks clicks. */
+.sidebar::after {
+  content: ""; position: fixed; top: 0; bottom: 0; left: 210px; width: 16px; z-index: 5;
+  pointer-events: none; opacity: .85;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='28' viewBox='0 0 16 28'><path d='M8 0 Q16 7 8 14 Q0 21 8 28' fill='none' stroke='%237fc4ff' stroke-width='2.2'/></svg>") repeat-y;
+  background-size: 16px 28px;
+}
 .logo { padding: 4px 20px 18px; }
 .logo .inf { font-size: 30px; line-height: 1; }
 .logo .name { font-weight: 800; letter-spacing: 2.5px; font-size: 16px; }
@@ -149,6 +158,7 @@ table.tbl tr:hover td { background: var(--blue-pale); }
 @media (max-width: 900px) {
   .app { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: static; display: flex; flex-wrap: wrap; align-items: center; }
+  .sidebar::after { display: none; } /* no vertical seam when the nav stacks on top */
   .nav { display: flex; flex-wrap: wrap; }
   .main { padding: 16px; }
 }
