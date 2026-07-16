@@ -27,33 +27,39 @@ a { color: var(--blue); }
 h1, h2, h3 { color: var(--blue-deep); }
 
 /* ---------- layout ---------- */
-.app { display: flex; min-height: 100vh; }
+.app { display: flex; flex-direction: column; min-height: 100vh; }
 .sidebar {
-  width: 226px; flex-shrink: 0; background: linear-gradient(180deg, var(--blue-dark), var(--blue-deep));
-  color: #fff; padding: 18px 0; position: sticky; top: 0; height: 100vh; overflow-y: auto;
-  /* Wavy waterline instead of a hard vertical edge: a vertical sine wave (SVG)
-     masks the sidebar's right edge, so the dark nav meets the content in a wave.
-     The left mask layer keeps everything but the last ~16px fully opaque; the
-     tiled wave shapes that final strip. Alpha of the SVG is what matters. */
+  width: 100%; background: linear-gradient(90deg, var(--blue-dark), var(--blue-deep));
+  color: #fff; position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 18px;
+  /* Extra bottom padding leaves room for the wave zone below the content. */
+  padding: 8px 26px 20px;
+  /* Wavy waterline along the BOTTOM edge: a horizontal sine wave (SVG) masks the
+     bar's bottom so the dark nav meets the content in a wave, not a hard line.
+     Top layer keeps all but the bottom ~14px opaque; the tiled wave shapes it. */
   -webkit-mask:
-    linear-gradient(#000 0 0) left / calc(100% - 14px) 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='30' viewBox='0 0 16 30'%3E%3Cpath d='M0 0 L8 0 Q16 7.5 8 15 Q0 22.5 8 30 L0 30 Z' fill='%23000'/%3E%3C/svg%3E") right / 16px 30px repeat-y;
+    linear-gradient(#000 0 0) top / 100% calc(100% - 13px) no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='16' viewBox='0 0 34 16'%3E%3Cpath d='M0 8 Q8.5 0 17 8 Q25.5 16 34 8 L34 0 L0 0 Z' fill='%23000'/%3E%3C/svg%3E") bottom / 34px 16px repeat-x;
           mask:
-    linear-gradient(#000 0 0) left / calc(100% - 14px) 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='30' viewBox='0 0 16 30'%3E%3Cpath d='M0 0 L8 0 Q16 7.5 8 15 Q0 22.5 8 30 L0 30 Z' fill='%23000'/%3E%3C/svg%3E") right / 16px 30px repeat-y;
+    linear-gradient(#000 0 0) top / 100% calc(100% - 13px) no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='16' viewBox='0 0 34 16'%3E%3Cpath d='M0 8 Q8.5 0 17 8 Q25.5 16 34 8 L34 0 L0 0 Z' fill='%23000'/%3E%3C/svg%3E") bottom / 34px 16px repeat-x;
 }
-.logo { padding: 4px 20px 18px; }
-.logo .inf { font-size: 30px; line-height: 1; }
-.logo .name { font-weight: 800; letter-spacing: 2.5px; font-size: 16px; }
+.logo { display: flex; align-items: baseline; gap: 9px; padding: 0; margin-right: 6px; }
+.logo .inf { font-size: 26px; line-height: 1; }
+.logo .name { font-weight: 800; letter-spacing: 2px; font-size: 16px; }
 .logo .tag { font-size: 10px; letter-spacing: 2px; opacity: .7; }
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
 .nav a {
-  display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: #cfe4f5;
-  text-decoration: none; font-weight: 500; border-left: 3px solid transparent; font-size: 14px;
+  display: flex; align-items: center; gap: 8px; padding: 8px 13px; color: #cfe4f5;
+  text-decoration: none; font-weight: 500; border-radius: 8px; font-size: 14px;
 }
-.nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
-.nav a.active { background: rgba(255,255,255,.14); color: #fff; border-left-color: #7fc4ff; }
-.nav .badge { margin-left: auto; background: #e74c3c; color: #fff; font-size: 11px; border-radius: 10px; padding: 0 7px; font-weight: 700; }
-.main { flex: 1; padding: 26px 32px; max-width: 1280px; }
+.nav a:hover { background: rgba(255,255,255,.10); color: #fff; }
+.nav a.active { background: rgba(255,255,255,.17); color: #fff; }
+.nav .badge { margin-left: 4px; background: #e74c3c; color: #fff; font-size: 11px; border-radius: 10px; padding: 0 7px; font-weight: 700; }
+.navfoot { margin-left: auto; display: flex; gap: 16px; font-size: 11px; }
+.navfoot a { color: #bcd6ec; text-decoration: none; }
+.navfoot a:hover { color: #fff; }
+.main { flex: 1; padding: 24px 28px; width: 100%; max-width: none; }
 
 /* ---------- components ---------- */
 .card { background: var(--white); border: 1px solid var(--blue-soft); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 18px; }
@@ -157,8 +163,7 @@ table.tbl tr:hover td { background: var(--blue-pale); }
 .toast.err { background: var(--red); }
 
 @media (max-width: 900px) {
-  .app { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: static; display: flex; flex-wrap: wrap; align-items: center; -webkit-mask: none; mask: none; }
-  .nav { display: flex; flex-wrap: wrap; }
+  .sidebar { position: static; padding: 8px 14px 14px; -webkit-mask: none; mask: none; }
+  .navfoot { margin-left: 0; }
   .main { padding: 16px; }
 }
