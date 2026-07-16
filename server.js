@@ -410,6 +410,13 @@ async function finalizeContractSigning(c, { method, depositMethod = null, finish
   c.specsLocked = true;
   c.status = 'active';
 
+  // Default the projected completion to 3 months out — unless one was already set,
+  // which stays editable in Edit Client Info.
+  if (!c.targetFinishDate) {
+    const t = new Date(c.contract.signedAt); t.setMonth(t.getMonth() + 3);
+    c.targetFinishDate = t.toISOString().slice(0, 10);
+  }
+
   const design = c.phases[0];
   design.status = 'active';
   design.startedAt = new Date().toISOString();
