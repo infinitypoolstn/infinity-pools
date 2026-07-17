@@ -396,6 +396,8 @@ function tSpecs(c) {
       <span class="total-line" id="spQuoteEl">${money(initial)}</span>
     </div>
 
+    <div class="row" style="align-items:flex-start">
+    <div style="flex:2.2;min-width:440px">
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0">Pool Base</h2>
@@ -477,8 +479,47 @@ function tSpecs(c) {
         </div>`).join('')}</div>
       ${!c.specsLocked ? '<button class="btn secondary small" onclick="addAddonRow()">＋ Add new field</button>' : ''}
     </div>
-    ${!c.specsLocked ? `<button class="btn" onclick="saveSpecs('${c.id}')">💾 Save Pool Specs</button>` : '<p class="muted">🔒 Locked — contract signed. Use Change Orders for modifications.</p>'}`;
+    ${!c.specsLocked ? `<button class="btn" onclick="saveSpecs('${c.id}')">💾 Save Pool Specs</button>` : '<p class="muted">🔒 Locked — contract signed. Use Change Orders for modifications.</p>'}
+    </div>
+    <div style="flex:1;min-width:280px">${specNotesCard(c)}</div>
+    </div>`;
 }
+// Second column of the Pool Specs tab: a dated notes log. Adding/deleting a note
+// saves immediately and works even after the specs are locked (it's a running
+// build log, kept separate from the priced specs).
+function specNotesCard(c) {
+  const notes = c.specNotes || [];
+  return `<div class="card" style="position:sticky;top:70px">
+    <h2 style="margin-bottom:4px">📝 Notes</h2>
+    <p class="muted" style="margin:0 0 10px;font-size:12px">Dated notes for this pool — team-only, not shown to the client.</p>
+    <label class="fld">Add a note<textarea id="specNoteInput" placeholder="Type a note and click Add…"></textarea></label>
+    <button class="btn small" onclick="addSpecNote('${c.id}')">＋ Add note</button>
+    <div style="margin-top:14px">
+      ${notes.length ? notes.map(n => `
+        <div style="border-left:3px solid var(--blue-soft);padding:0 0 6px 10px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <span style="font-size:12px;font-weight:700;color:var(--blue-dark)">${fmtDate(n.at)}</span>
+            <button class="btn danger small" title="Delete note" onclick="delSpecNote('${c.id}','${n.id}')">✕</button>
+          </div>
+          <div style="white-space:pre-wrap;margin-top:2px">${esc(n.text)}</div>
+        </div>`).join('') : '<p class="muted" style="margin:0">No notes yet.</p>'}
+    </div>
+  </div>`;
+}
+window.addSpecNote = async function (id) {
+  const el = document.getElementById('specNoteInput');
+  const text = (el ? el.value : '').trim();
+  if (!text) return toast('Type a note first', true);
+  const c = client(id);
+  const note = { id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), text };
+  try { await api('PUT', '/api/clients/' + id, { specNotes: [note, ...(c.specNotes || [])] }); await reload(); route(); toast('Note added'); }
+  catch (e) { toast(e.message, true); }
+};
+window.delSpecNote = async function (id, noteId) {
+  const c = client(id);
+  try { await api('PUT', '/api/clients/' + id, { specNotes: (c.specNotes || []).filter(n => n.id !== noteId) }); await reload(); route(); }
+  catch (e) { toast(e.message, true); }
+};
 window.spQuote = function () {
   const v = i => { const el = document.getElementById(i); return el ? Number(el.value) || 0 : 0; };
   const on = i => { const el = document.getElementById(i); return el ? el.checked : false; };
