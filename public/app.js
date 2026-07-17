@@ -241,6 +241,10 @@ window.addProspect = function () {
       </div>
     </div>
     <p class="muted" style="margin:0 0 8px">…or enter the details manually:</p>
+    <label class="fld">Project type<select id="pType">
+      <option value="new_pool">🏊 New Pool — full build workflow</option>
+      <option value="repair">🔧 Repair — scope, deadline, budget & invoice</option>
+    </select></label>
     <label class="fld">Client Name<input type="text" id="pName" placeholder="John & Jane Smith"></label>
     <label class="fld">Address<input type="text" id="pAddr" placeholder="1533 Harding Pl, Nashville TN"></label>
     <label class="fld">Email<input type="email" id="pEmail"></label>
@@ -266,10 +270,10 @@ window.addProspect = function () {
       const name = $('#pName').value.trim();
       if (!name) return toast('Client name is required', true);
       try {
-        const c = await api('POST', '/api/clients', { name, address: $('#pAddr').value.trim(), email: $('#pEmail').value.trim(), phone: $('#pPhone').value.trim() });
+        const c = await api('POST', '/api/clients', { name, address: $('#pAddr').value.trim(), email: $('#pEmail').value.trim(), phone: $('#pPhone').value.trim(), projectType: $('#pType').value });
         await reload(); closeModal();
         location.hash = '#/client/' + c.id;
-        toast('Prospect created');
+        toast(c.projectType === 'repair' ? 'Repair project created' : 'Prospect created');
       } catch (e) { toast(e.message, true); }
     };
     $('#pName').focus();
@@ -286,10 +290,10 @@ function vProjects() {
     <div class="card" style="margin-top:16px">
       <table class="tbl"><thead><tr><th>Client</th><th>Address</th><th>Email / Phone</th><th>Status</th><th class="right">Quote + COs</th><th></th></tr></thead><tbody>
       ${S.clients.map(c => `<tr>
-        <td><b>${esc(c.name)}</b></td><td>${esc(c.address)}</td>
+        <td><b>${esc(c.name)}</b>${c.projectType === 'repair' ? ' <span class="chip" style="background:#e6d8f5;color:#5b2a86">🔧 Repair</span>' : ''}</td><td>${esc(c.address)}</td>
         <td>${esc(c.email)}<div class="muted">${esc(c.phone)}</div></td>
         <td><span class="chip ${c.status}">${statusLabel[c.status]}</span></td>
-        <td class="right money">${money(c._quote + c._coTotal)}</td>
+        <td class="right money">${c.projectType === 'repair' ? money(Number(c.repair && c.repair.budget) || 0) : money(c._quote + c._coTotal)}</td>
         <td class="right"><a class="btn small" href="#/client/${c.id}">Open</a></td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">No clients yet.</td></tr>'}
       </tbody></table>
@@ -298,29 +302,34 @@ function vProjects() {
 
 /* ============================== CLIENT DETAIL ============================== */
 const TABS = [['specs', 'Pool Specs'], ['scope', 'Scope of Work'], ['design', 'Design'], ['finance', 'Finance'], ['files', 'Files'], ['contract', 'Contract & Phases'], ['tasks', 'Tasks'], ['changes', 'Change Orders'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
+// Repair projects skip the new-pool build tabs and lead with the Repair tab.
+const REPAIR_TABS = [['repair', 'Repair'], ['files', 'Files'], ['tasks', 'Tasks'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
 
-function vClient(id, tab = 'specs') {
+function vClient(id, tab) {
   const c = client(id);
   if (!c) { $('#main').innerHTML = '<p>Project not found. <a href="#/projects">Back</a></p>'; return; }
+  const isRepair = c.projectType === 'repair';
+  const tabs = isRepair ? REPAIR_TABS : TABS;
+  if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0]; // default / guard invalid tab for this type
   $('#main').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <div>
-        <h1 style="margin:0 0 2px">${c.testMode ? '<span class="chip" style="background:#fde8c8;color:#8a5a10;vertical-align:middle;margin-right:8px">🧪 TEST</span>' : ''}${esc(c.address) || esc(c.name)}</h1>
+        <h1 style="margin:0 0 2px">${c.testMode ? '<span class="chip" style="background:#fde8c8;color:#8a5a10;vertical-align:middle;margin-right:8px">🧪 TEST</span>' : ''}${isRepair ? '<span class="chip" style="background:#e6d8f5;color:#5b2a86;vertical-align:middle;margin-right:8px">🔧 REPAIR</span>' : ''}${esc(c.address) || esc(c.name)}</h1>
         <div class="muted">${esc(c.name)} · ${esc(c.email)} · ${esc(c.phone)} &nbsp; <span class="chip ${c.status}">${statusLabel[c.status]}</span>
         ${c._currentPhase ? ` <span class="chip phase">${esc(c._currentPhase.name)}</span>` : ''}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn secondary small" onclick="editClientInfo('${c.id}')">✏️ Edit Info</button>
-        <a class="btn secondary small" href="/api/clients/${c.id}/contract.pdf" target="_blank">⬇ Contract PDF</a>
+        ${isRepair ? '' : `<a class="btn secondary small" href="/api/clients/${c.id}/contract.pdf" target="_blank">⬇ Contract PDF</a>`}
       </div>
     </div>
     ${c.testMode ? '<div class="banner" style="margin-top:12px;background:#fef4dc;border:1px solid #f3e3b5;color:#8a5a10">🧪 <b>Test job.</b> Step through any part of the workflow freely — <b>no QuickBooks invoice is ever created</b> for this project. Delete it when you\'re done.</div>' : ''}
-    ${c.specsLocked ? '<div class="banner lock" style="margin-top:12px">🔒 Contract signed — pool specs and pricing are locked. All changes must be entered as <a href="#/client/' + c.id + '/changes">Change Orders</a>.</div>' : ''}
+    ${!isRepair && c.specsLocked ? '<div class="banner lock" style="margin-top:12px">🔒 Contract signed — pool specs and pricing are locked. All changes must be entered as <a href="#/client/' + c.id + '/changes">Change Orders</a>.</div>' : ''}
     <div class="tabs" style="margin-top:14px">
-      ${TABS.map(([k, l]) => `<button class="${k === tab ? 'active' : ''}" onclick="location.hash='#/client/${c.id}/${k}'">${l}</button>`).join('')}
+      ${tabs.map(([k, l]) => `<button class="${k === tab ? 'active' : ''}" onclick="location.hash='#/client/${c.id}/${k}'">${l}</button>`).join('')}
     </div>
     <div id="tabBody"></div>`;
-  ({ specs: tSpecs, scope: tScope, design: tDesign, finance: tFinance, files: tFiles, contract: tContract, tasks: tTasks, changes: tChanges, costs: tCosts, portal: tPortal }[tab] || tSpecs)(c);
+  ({ specs: tSpecs, scope: tScope, design: tDesign, finance: tFinance, files: tFiles, contract: tContract, tasks: tTasks, changes: tChanges, costs: tCosts, portal: tPortal, repair: tRepair }[tab] || (isRepair ? tRepair : tSpecs))(c);
 }
 
 window.editClientInfo = function (id) {
@@ -1129,6 +1138,115 @@ function tTasks(c) {
       </tbody></table>
     </div>`;
 }
+
+/* ---------- Repair tab ---------- */
+function repairItemRow(it) {
+  it = it || {};
+  return `<div class="row" data-repairitem style="align-items:flex-end">
+    <label class="fld grow">What needs repair<input type="text" class="ri-desc" value="${esc(it.description || '')}" placeholder="e.g. Replace pump motor"></label>
+    <label class="fld" style="max-width:160px">Est. cost ($)<input type="number" step="0.01" min="0" class="ri-cost" value="${it.cost || ''}" oninput="repairRecalc()"></label>
+    <button class="btn danger small" style="margin-bottom:12px" onclick="this.closest('[data-repairitem]').remove();repairRecalc()">✕</button>
+  </div>`;
+}
+function repairInvoiceHTML(c) {
+  const r = c.repair || {}, qb = r.qb || {};
+  const budget = Number(r.budget) || 0;
+  if (qb.invoiceId) {
+    return `<h2 style="margin:0 0 8px">Client Invoice</h2>
+      <p style="margin:0 0 8px"><span class="chip active">Invoice created</span>${qb.sentAt ? ` · sent ${fmtDate(qb.sentAt)}` : ''}</p>
+      <p style="margin:0 0 8px;font-size:20px;font-weight:800;color:var(--blue-dark)">${money(budget)}</p>
+      ${qb.payLink ? `<a class="btn small" href="${esc(qb.payLink)}" target="_blank">Open Pay Link ↗</a> ` : ''}
+      ${qb.invoiceUrl ? `<a class="btn small secondary" href="${esc(qb.invoiceUrl)}" target="_blank">View in QuickBooks ↗</a>` : ''}
+      <div style="margin-top:10px"><button class="btn secondary small" onclick="sendRepairInvoice('${c.id}')">↻ Recreate &amp; Resend</button></div>`;
+  }
+  if (!S.quickbooksConnected) {
+    return `<h2 style="margin:0 0 8px">Client Invoice</h2>
+      <p class="muted" style="margin:0 0 8px">QuickBooks isn't connected — paste a payment link to share with the client, or connect it in <a href="#/settings">Settings</a>.</p>
+      <label class="fld">Payment link<input type="text" id="rp_paylink" value="${esc(r.paymentLink || '')}" placeholder="https://…"></label>
+      <button class="btn small" onclick="saveRepair('${c.id}')">💾 Save link</button>
+      ${r.paymentLink ? ` <a class="btn small secondary" href="${esc(r.paymentLink)}" target="_blank">Open ↗</a>` : ''}`;
+  }
+  return `<h2 style="margin:0 0 8px">Client Invoice</h2>
+    <p class="muted" style="margin:0 0 10px">Bill the client for this repair — creates a QuickBooks invoice and emails them a Pay Now link.</p>
+    ${c.testMode ? '<p class="muted">🧪 Test job — no invoice is created.</p>'
+      : budget > 0 ? `<button class="btn" onclick="sendRepairInvoice('${c.id}')">📧 Create &amp; Send Invoice (${money(budget)})</button>`
+      : '<p class="muted">Set a budget and click <b>Save Repair</b> to enable invoicing.</p>'}`;
+}
+function tRepair(c) {
+  const r = c.repair || {};
+  const items = r.items || [];
+  const itemsTotal = items.reduce((a, x) => a + (Number(x.cost) || 0), 0);
+  const isClient = r.responsible !== 'infinity';
+  $('#tabBody').innerHTML = `
+    <div class="row" style="align-items:flex-start">
+      <div class="grow" style="flex:2;min-width:440px">
+        <div class="card">
+          <div class="chd"><h2 style="margin:0">🔧 Repair Scope</h2>
+            <span class="muted" style="font-size:12px">Items total: <b id="repairItemsTotal">${money(itemsTotal)}</b></span></div>
+          <p class="muted" style="margin-top:0">What needs to be repaired — one line per item. Costs are optional and roll up as an estimate.</p>
+          <div id="repairItems">${items.map(repairItemRow).join('')}</div>
+          <button class="btn secondary small" onclick="addRepairItemRow()">＋ Add repair item</button>
+        </div>
+        <div class="card">
+          <h2>Timeline & Budget</h2>
+          <div class="row">
+            <label class="fld grow">Deadline<input type="date" id="rp_deadline" value="${r.deadline || ''}"></label>
+            <label class="fld grow">Budget ($)<input type="number" step="0.01" min="0" id="rp_budget" value="${r.budget || ''}" placeholder="${itemsTotal || ''}"></label>
+          </div>
+          <label class="fld">Who is responsible for payment?
+            <select id="rp_responsible" onchange="repairRespChanged()">
+              <option value="client" ${isClient ? 'selected' : ''}>Client responsible — invoice them</option>
+              <option value="infinity" ${!isClient ? 'selected' : ''}>Infinity Pools covers it</option>
+            </select></label>
+          <button class="btn" onclick="saveRepair('${c.id}')">💾 Save Repair</button>
+        </div>
+      </div>
+      <div class="grow" style="flex:1;min-width:300px">
+        <div class="card" id="repairInvoiceCard" style="${isClient ? '' : 'display:none'}">${repairInvoiceHTML(c)}</div>
+        <div class="card" id="repairInfinityNote" style="background:var(--blue-pale);${isClient ? 'display:none' : ''}">
+          <h2 style="margin:0 0 4px">Infinity Pools covers this</h2>
+          <p class="muted" style="margin:0">No client invoice — this repair is on us (warranty / goodwill). Track internal costs on the <b>Costs (Internal)</b> tab.</p>
+        </div>
+      </div>
+    </div>`;
+}
+window.repairRecalc = function () {
+  const total = [...document.querySelectorAll('.ri-cost')].reduce((a, i) => a + (Number(i.value) || 0), 0);
+  const el = document.getElementById('repairItemsTotal'); if (el) el.textContent = money(total);
+  const b = document.getElementById('rp_budget'); if (b && !b.value) b.placeholder = total || '';
+};
+window.addRepairItemRow = function () {
+  const el = document.getElementById('repairItems'); if (el) el.insertAdjacentHTML('beforeend', repairItemRow({}));
+};
+window.repairRespChanged = function () {
+  const client = document.getElementById('rp_responsible').value === 'client';
+  const inv = document.getElementById('repairInvoiceCard'), note = document.getElementById('repairInfinityNote');
+  if (inv) inv.style.display = client ? '' : 'none';
+  if (note) note.style.display = client ? 'none' : '';
+};
+window.saveRepair = async function (id) {
+  const c = client(id);
+  const val = i => { const el = document.getElementById(i); return el ? el.value : ''; };
+  const items = [...document.querySelectorAll('[data-repairitem]')]
+    .map(r => ({ id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), description: r.querySelector('.ri-desc').value, cost: Number(r.querySelector('.ri-cost').value) || 0 }))
+    .filter(x => x.description.trim());
+  const paylinkEl = document.getElementById('rp_paylink');
+  const repair = {
+    items,
+    deadline: val('rp_deadline') || null,
+    budget: Number(val('rp_budget')) || 0,
+    responsible: val('rp_responsible') || 'client',
+    paymentLink: paylinkEl ? paylinkEl.value.trim() : ((c.repair && c.repair.paymentLink) || ''),
+    qb: (c.repair && c.repair.qb) || { invoiceId: null, invoiceUrl: null, payLink: null, sentAt: null },
+  };
+  try { await api('PUT', '/api/clients/' + id, { repair }); await reload(); route(); toast('Repair saved'); }
+  catch (e) { toast(e.message, true); }
+};
+window.sendRepairInvoice = async function (id) {
+  if (!confirm('Create and email a QuickBooks invoice to the client for this repair?')) return;
+  try { await api('POST', `/api/clients/${id}/repair/invoice`); await reload(); route(); toast('Repair invoice created & sent'); }
+  catch (e) { toast(e.message, true); }
+};
 
 /* ---------- Change Orders tab ---------- */
 function tChanges(c) {

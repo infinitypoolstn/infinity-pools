@@ -269,7 +269,7 @@ app.put('/api/clients/:id', (req, res) => {
     // the Finance line items so the two totals always match.
     c.finance = store.specsToFinance(b.specs);
   }
-  for (const k of ['name', 'address', 'email', 'phone', 'status', 'targetFinishDate', 'scope', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview']) {
+  for (const k of ['name', 'address', 'email', 'phone', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview']) {
     if (b[k] !== undefined) c[k] = b[k];
   }
   if (b.finance !== undefined) {
@@ -697,6 +697,31 @@ app.post('/api/clients/:id/change-orders/:coId/send-invoice', wrap(async (req, r
   store.addAlert(`${c.address}: change order invoice sent to ${c.email} — "${co.description}"`, { clientId: c.id, type: 'info' });
   store.save();
   res.json({ ok: true });
+}));
+
+// Repair project: create a QuickBooks invoice for the repair budget and email it
+// to the client. Only for client-responsible repairs on a real (non-test) job.
+app.post('/api/clients/:id/repair/invoice', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const r = c.repair || {};
+  if (c.projectType !== 'repair') return res.status(400).json({ error: 'This project is not a repair.' });
+  if (r.responsible !== 'client') return res.status(400).json({ error: 'Set “Client responsible” before invoicing.' });
+  if (!(Number(r.budget) > 0)) return res.status(400).json({ error: 'Set a repair budget greater than $0 first.' });
+  if (!c.email) return res.status(400).json({ error: 'Client has no email address on file.' });
+  if (c.testMode) return res.status(400).json({ error: 'Test job — no invoice is created.' });
+  if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected. Paste a payment link instead, or connect QuickBooks in Settings.' });
+  await quickbooks.createRepairInvoice(c);
+  try {
+    await quickbooks.sendInvoiceById(c, c.repair.qb.invoiceId);
+    c.repair.qb.sentAt = new Date().toISOString();
+  } catch (e) {
+    store.addAlert('Repair invoice created but could not be emailed for ' + c.address + ': ' + e.message, { clientId: c.id, type: 'error' });
+    store.save();
+    return res.status(502).json({ error: 'Invoice created but sending failed: ' + e.message, client: c });
+  }
+  store.addAlert(`🔧 Repair invoice sent to ${c.name} (${alerts.fmtMoney(Number(c.repair.budget) || 0)}) — ${c.address}`, { clientId: c.id, type: 'change' });
+  store.save();
+  res.json({ client: c });
 }));
 
 // ---------------------------------------------------------------------------
