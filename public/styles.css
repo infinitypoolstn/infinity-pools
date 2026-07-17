@@ -126,6 +126,15 @@ table.tbl tr:hover td { background: var(--blue-pale); }
 .progress { height: 7px; background: var(--blue-pale); border-radius: 4px; overflow: hidden; min-width: 90px; }
 .progress > div { height: 100%; background: linear-gradient(90deg, var(--blue-mid), var(--blue)); border-radius: 4px; }
 
+/* contacts columns */
+.chd { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.clist { display: flex; flex-direction: column; }
+.clist .ci { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--blue-soft); }
+.clist .ci:last-child { border-bottom: 0; }
+.clist .ci .nm { font-weight: 700; }
+.clist .ci .sub { font-size: 12px; color: var(--mid); line-height: 1.5; }
+.clist .ci .act { flex: none; white-space: nowrap; display: flex; gap: 4px; }
+
 /* modal */
 .modal-bg { position: fixed; inset: 0; background: rgba(9, 61, 107, .45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
 .modal { background: #fff; border-radius: 14px; padding: 24px 26px; width: 520px; max-width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 18px 60px rgba(0,0,0,.25); }

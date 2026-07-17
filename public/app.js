@@ -50,12 +50,18 @@ async function route() {
   if (!S) await reload();
   const hash = location.hash.slice(2) || '';
   const [view, id, tab] = hash.split('/');
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', (a.dataset.view === (view || 'dashboard')) || (view === 'client' && a.dataset.view === 'clients')));
+  document.querySelectorAll('#nav a').forEach(a => {
+    const v = a.dataset.view;
+    a.classList.toggle('active', v === (view || 'dashboard')
+      || (v === 'projects' && (view === 'clients' || view === 'client'))
+      || (v === 'contacts' && (view === 'employees' || view === 'contractors')));
+  });
   const unread = S.alerts.filter(a => !a.read).length;
   const badge = $('#alertBadge');
   badge.style.display = unread ? '' : 'none';
   badge.textContent = unread;
-  const views = { '': vDashboard, clients: vClients, client: () => vClient(id, tab), tasks: vTasks, employees: vEmployees, contractors: vContractors, design: vDesign, alerts: vAlerts, settings: vSettings, eula: vEula, privacy: vPrivacy };
+  // `clients` and `employees`/`contractors` remain as aliases so older links still resolve.
+  const views = { '': vDashboard, projects: vProjects, clients: vProjects, client: () => vClient(id, tab), tasks: vTasks, contacts: vContacts, employees: vContacts, contractors: vContacts, design: vDesign, alerts: vAlerts, settings: vSettings, eula: vEula, privacy: vPrivacy };
   (views[view || ''] || vDashboard)();
 }
 window.addEventListener('hashchange', route);
@@ -271,10 +277,10 @@ window.addProspect = function () {
 };
 
 /* ============================== CLIENTS LIST ============================== */
-function vClients() {
+function vProjects() {
   $('#main').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h1 style="margin:0">Clients</h1>
+      <h1 style="margin:0">Projects</h1>
       <button class="btn" onclick="addProspect()">＋ Add New Prospect</button>
     </div>
     <div class="card" style="margin-top:16px">
@@ -295,7 +301,7 @@ const TABS = [['specs', 'Pool Specs'], ['scope', 'Scope of Work'], ['design', 'D
 
 function vClient(id, tab = 'specs') {
   const c = client(id);
-  if (!c) { $('#main').innerHTML = '<p>Client not found. <a href="#/clients">Back</a></p>'; return; }
+  if (!c) { $('#main').innerHTML = '<p>Project not found. <a href="#/projects">Back</a></p>'; return; }
   $('#main').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <div>
@@ -341,7 +347,7 @@ window.saveClientInfo = async function (id) {
 };
 window.deleteClient = async function (id) {
   if (!confirm('Delete this client and all their data? This cannot be undone.')) return;
-  await api('DELETE', '/api/clients/' + id); await reload(); closeModal(); location.hash = '#/clients';
+  await api('DELETE', '/api/clients/' + id); await reload(); closeModal(); location.hash = '#/projects';
 };
 window.startOverProject = async function (id) {
   if (!confirm('Cancel / Start Over this build?\n\nClears: all phases, the contract (un-signs it), payments, change orders, and QuickBooks links.\nKeeps: the client, contact info, address, quote/pricing, specs, finishes, and files.\n\nThis cannot be undone. Note: any QuickBooks estimate or invoices already created are NOT deleted — void those in QuickBooks if needed.')) return;
@@ -1412,17 +1418,44 @@ window.taskRemind = async function (id) {
 };
 
 /* ============================== EMPLOYEES / CONTRACTORS ============================== */
-function vEmployees() {
+// Contacts: three side-by-side columns — Clients, Employees, Contractors.
+function vContacts() {
+  const clients = [...S.clients].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const emps = S.employees;
+  const cons = [...S.contractors].sort((a, b) => (a.category || '').localeCompare(b.category || '') || (a.name || '').localeCompare(b.name || ''));
+  const sub = parts => parts.filter(Boolean).map(esc).join(' · ');
   $('#main').innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h1 style="margin:0">Employees</h1><button class="btn" onclick="empEdit()">＋ Add Employee</button>
-    </div>
-    <p class="muted">Everyone on this list receives automatic phase-completion and due-date alert emails.</p>
-    <div class="card">
-      <table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Phone</th><th></th></tr></thead><tbody>
-      ${S.employees.map(e => `<tr><td><b>${esc(e.name)}</b></td><td>${esc(e.role || '')}</td><td>${esc(e.email)}</td><td>${esc(e.phone || '')}</td>
-        <td class="right"><button class="btn small secondary" onclick="empEdit('${e.id}')">Edit</button> <button class="btn danger small" onclick="empDel('${e.id}')">✕</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No employees yet — add your team so they get alerts.</td></tr>'}
-      </tbody></table>
+    <h1 style="margin:0 0 16px">Contacts</h1>
+    <div class="row" style="align-items:flex-start">
+      <div class="card grow" style="min-width:300px">
+        <div class="chd"><h2 style="margin:0">Clients (${clients.length})</h2><button class="btn small" onclick="addProspect()">＋ Add</button></div>
+        <div class="clist">${clients.map(c => `
+          <div class="ci">
+            <div><div class="nm">${esc(c.name) || '<i>no name</i>'}</div>
+              <div class="sub">${sub([c.address, c.email, c.phone])}</div>
+              <div style="margin-top:3px"><span class="chip ${c.status}">${statusLabel[c.status]}</span></div></div>
+            <div class="act"><a class="btn small" href="#/client/${c.id}">Open</a></div>
+          </div>`).join('') || '<p class="muted" style="margin:0">No clients yet.</p>'}</div>
+      </div>
+      <div class="card grow" style="min-width:300px">
+        <div class="chd"><h2 style="margin:0">Employees (${emps.length})</h2><button class="btn small" onclick="empEdit()">＋ Add</button></div>
+        <p class="muted" style="margin:0 0 10px;font-size:12px">Receive automatic phase-completion and due-date alert emails.</p>
+        <div class="clist">${emps.map(e => `
+          <div class="ci">
+            <div><div class="nm">${esc(e.name)}</div><div class="sub">${sub([e.role, e.email, e.phone])}</div></div>
+            <div class="act"><button class="btn small secondary" onclick="empEdit('${e.id}')">Edit</button><button class="btn danger small" onclick="empDel('${e.id}')">✕</button></div>
+          </div>`).join('') || '<p class="muted" style="margin:0">No employees yet — add your team so they get alerts.</p>'}</div>
+      </div>
+      <div class="card grow" style="min-width:300px">
+        <div class="chd"><h2 style="margin:0">Contractors (${cons.length})</h2><button class="btn small" onclick="conEdit()">＋ Add</button></div>
+        <div class="clist">${cons.map(x => `
+          <div class="ci">
+            <div><div class="nm">${esc(x.name)}</div>
+              <div style="margin:1px 0 2px"><span class="chip phase">${esc(x.category || '')}</span></div>
+              <div class="sub">${sub([x.company, x.phone, x.email])}</div></div>
+            <div class="act"><button class="btn small secondary" onclick="conEdit('${x.id}')">Edit</button><button class="btn danger small" onclick="conDel('${x.id}')">✕</button></div>
+          </div>`).join('') || '<p class="muted" style="margin:0">No contractors yet.</p>'}</div>
+      </div>
     </div>`;
 }
 window.empEdit = function (id) {
@@ -1449,20 +1482,6 @@ window.empDel = async function (id) {
   catch (e) { toast('Delete failed: ' + e.message, true); }
 };
 
-function vContractors() {
-  $('#main').innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h1 style="margin:0">Contractor Reference List</h1><button class="btn" onclick="conEdit()">＋ Add Contractor</button>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <table class="tbl"><thead><tr><th>Name</th><th>Company</th><th>Category</th><th>Phone</th><th>Email</th><th></th></tr></thead><tbody>
-      ${[...S.contractors].sort((a, b) => (a.category || '').localeCompare(b.category || '')).map(x => `<tr>
-        <td><b>${esc(x.name)}</b></td><td>${esc(x.company || '')}</td><td><span class="chip phase">${esc(x.category || '')}</span></td>
-        <td>${esc(x.phone || '')}</td><td>${esc(x.email || '')}</td>
-        <td class="right"><button class="btn small secondary" onclick="conEdit('${x.id}')">Edit</button> <button class="btn danger small" onclick="conDel('${x.id}')">✕</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No contractors yet.</td></tr>'}
-      </tbody></table>
-    </div>`;
-}
 window.conEdit = function (id) {
   const x = S.contractors.find(c => c.id === id) || { name: '', company: '', category: S.settings.contractorCategories[0], phone: '', email: '' };
   modal(`<h2>${id ? 'Edit' : 'Add'} Contractor</h2>
