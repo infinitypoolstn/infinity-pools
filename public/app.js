@@ -373,7 +373,7 @@ function tSpecs(c) {
   const ss = pb.sunShelf || {}, ls = pb.ledgeSeating || {}, sp = pb.spillover || {};
   const sumItems = arr => (arr || []).reduce((a, x) => a + (Number(x.price) || 0), 0);
   // live running total of every priced section that's included (plus its line items)
-  const initial = (Number(pb.price) || 0)
+  const initial = (Number(pb.price) || 0) + sumItems(pb.items)
     + (spa.included ? (Number(spa.price) || 0) + sumItems(spa.items) : 0)
     + (fl.included ? (Number(fl.price) || 0) + sumItems(fl.items) : 0)
     + (wf.included ? (Number(wf.price) || 0) : 0)
@@ -437,6 +437,9 @@ function tSpecs(c) {
       <div class="row">
         <label class="fld grow">Equipment pad location<input type="text" id="pb_equippad" value="${esc(s.equipmentPad)}" ${dis}></label>
       </div>
+      <div class="row">
+        <label class="fld grow">Additional Details<textarea id="pb_details" ${dis} placeholder="Any extra notes about the pool base…">${esc(pb.details)}</textarea></label>
+      </div>
       <div style="margin-top:6px">
         <label class="check"><input type="checkbox" id="pb_sunshelf_inc" ${ss.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_sunshelf_wrap').style.display=this.checked?'':'none'"> Sun Shelf</label>
         <div id="pb_sunshelf_wrap" class="row" style="${ss.included ? '' : 'display:none'}"><label class="fld grow">Sun Shelf details<input type="text" id="pb_sunshelf_det" value="${esc(ss.details)}" ${dis}></label></div>
@@ -449,6 +452,7 @@ function tSpecs(c) {
         <label class="check"><input type="checkbox" id="pb_ledge_inc" ${ls.included ? 'checked' : ''} ${dis} onchange="document.getElementById('pb_ledge_wrap').style.display=this.checked?'':'none'"> Ledge / Seating</label>
         <div id="pb_ledge_wrap" class="row" style="${ls.included ? '' : 'display:none'}"><label class="fld grow">Ledge / Seating details<input type="text" id="pb_ledge_det" value="${esc(ls.details)}" ${dis}></label></div>
       </div>
+      ${subItemsBlock('pb', pb.items)}
     </div>
 
     <div class="card">
@@ -539,7 +543,7 @@ window.spQuote = function () {
   const v = i => { const el = document.getElementById(i); return el ? Number(el.value) || 0 : 0; };
   const on = i => { const el = document.getElementById(i); return el ? el.checked : false; };
   const sub = id => { const el = document.getElementById(id); return el ? [...el.querySelectorAll('.subitem-price')].reduce((a, i) => a + (Number(i.value) || 0), 0) : 0; };
-  let t = v('pb_price');
+  let t = v('pb_price') + sub('pb_items');
   if (on('spa_inc')) t += v('spa_price') + sub('spa_items');
   if (on('fl_inc')) t += v('fl_price') + sub('fl_items');
   if (on('wf_inc')) t += v('wf_price');
@@ -581,10 +585,11 @@ window.saveSpecs = async function (id) {
     poolBase: {
       price: num('pb_price'), shape: val('pb_shape'), freeform: val('pb_freeform'),
       size: val('pb_size'), depth: val('pb_depth'),
-      jets: val('pb_jets'), ledLights: val('pb_led'),
+      jets: val('pb_jets'), ledLights: val('pb_led'), details: val('pb_details'),
       sunShelf: { included: chk('pb_sunshelf_inc'), details: val('pb_sunshelf_det') },
       spillover: { included: chk('pb_spillover_inc'), details: val('pb_spillover_det') },
       ledgeSeating: { included: chk('pb_ledge_inc'), details: val('pb_ledge_det') },
+      items: subItems('pb_items'),
     },
     spaBase: { included: chk('spa_inc'), price: num('spa_price'), size: val('spa_size'), jets: val('spa_jets'), ledLights: val('spa_led'), details: val('spa_det'), items: subItems('spa_items') },
     fireLounge: { included: chk('fl_inc'), price: num('fl_price'), size: val('fl_size'), details: val('fl_det'), items: subItems('fl_items') },
