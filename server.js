@@ -787,7 +787,7 @@ app.post('/api/clients/:id/files', upload.array('files', 20), wrap(async (req, r
       let amount = (req.files.length === 1 && enteredAmount > 0) ? enteredAmount
         : await extractInvoiceTotal(path.join(UPLOADS_DIR, c.id, f.filename));
       const label = 'Invoice: ' + f.originalname.replace(/\.[^.]+$/, '');
-      c.costs.items.push({ id: store.id(), label, category: INVOICE_COST_CATEGORY[category], amount, fileId: rec.id });
+      c.costs.items.push({ id: store.id(), label, category: INVOICE_COST_CATEGORY[category], scope: 'pool', amount, fileId: rec.id });
       costsAdded.push({ label, amount });
     }
   }

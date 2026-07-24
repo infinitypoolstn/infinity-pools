@@ -1527,9 +1527,35 @@ window.delCO = async function (id, coId) {
 };
 
 /* ---------- Costs tab (internal) ---------- */
+// Which part of the project a cost belongs to, so profit can be read per
+// component (Pool vs Site Excavation vs Landscaping).
+const COST_SCOPES = [['pool', '🏊 Pool'], ['siteExcavation', '🏗 Site Excavation'], ['landscaping', '🌳 Landscaping']];
+const costScopeLabel = v => (COST_SCOPES.find(([k]) => k === v) || COST_SCOPES[0])[1];
+const costScopeSelect = sel => `<select class="input cost-scope" style="max-width:160px">${COST_SCOPES.map(([v, l]) => `<option value="${v}" ${(sel || 'pool') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+const CAT_OPTS = ['Materials', 'Labor', 'Subcontractor', 'Permits', 'Equipment', 'Other'];
 function tCosts(c) {
   const total = c.costs.items.reduce((a, i) => a + (Number(i.amount) || 0), 0);
   const rev = c._quote + c._coTotal;
+  // Costs grouped by project component.
+  const costByScope = { pool: 0, siteExcavation: 0, landscaping: 0 };
+  c.costs.items.forEach(it => { const k = costByScope[it.scope] !== undefined ? it.scope : 'pool'; costByScope[k] += Number(it.amount) || 0; });
+  // Revenue per component: the pool quote (+ change orders) vs each module's subtotal.
+  const revByScope = {
+    pool: c._quote + c._coTotal,
+    siteExcavation: (c.siteExcavation && c.siteExcavation.included) ? moduleSum(c.siteExcavation) : 0,
+    landscaping: (c.landscaping && c.landscaping.included) ? moduleSum(c.landscaping) : 0,
+  };
+  // Show a component row when it carries revenue or any cost (Pool always shows).
+  const scopeRows = COST_SCOPES.filter(([k]) => k === 'pool' || revByScope[k] || costByScope[k]).map(([k, label]) => {
+    const r = revByScope[k], co = costByScope[k], p = r - co;
+    return `<tr>
+      <td>${label}</td>
+      <td class="right money">${money(r)}</td>
+      <td class="right money">${money(co)}</td>
+      <td class="right money" style="color:${p >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${money(p)}</td>
+      <td class="right">${r ? Math.round(p / r * 100) : 0}%</td>
+    </tr>`;
+  }).join('');
   $('#tabBody').innerHTML = `
     <div class="banner lock">🔒 INTERNAL ONLY — costs never appear on contracts, the client portal, or any client email.</div>
     <div class="row" style="margin-bottom:14px">
@@ -1539,12 +1565,19 @@ function tCosts(c) {
       <div class="metric"><div class="v">${rev ? Math.round((rev - total) / rev * 100) : 0}%</div><div class="l">Margin</div></div>
     </div>
     <div class="card" style="max-width:680px">
+      <h2>Profit by Component</h2>
+      <p class="muted" style="margin-top:0">Revenue vs. cost for each part of the project. Assign each cost below to a component.</p>
+      <table class="tbl"><thead><tr><th>Component</th><th class="right">Revenue</th><th class="right">Cost</th><th class="right">Profit</th><th class="right">Margin</th></tr></thead>
+        <tbody>${scopeRows}</tbody></table>
+    </div>
+    <div class="card" style="max-width:680px">
       <h2>Build Costs</h2>
       <div id="costRows">${c.costs.items.map(it => `
         <div class="row" style="align-items:center;margin-bottom:8px" data-cost data-fileid="${it.fileId || ''}" title="${it.fileId ? 'Created automatically from an uploaded invoice' : ''}">
           ${it.fileId ? '<span title="From uploaded invoice">🧾</span>' : ''}
           <input class="input grow cost-label" value="${esc(it.label)}" placeholder="e.g. Shotcrete crew">
-          <select class="input cost-cat" style="max-width:150px">${['Materials', 'Labor', 'Subcontractor', 'Permits', 'Equipment', 'Other'].map(x => `<option ${it.category === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+          ${costScopeSelect(it.scope)}
+          <select class="input cost-cat" style="max-width:150px">${CAT_OPTS.map(x => `<option ${it.category === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
           <span style="font-weight:700;color:var(--mid)">$</span>
           <input class="input cost-amount" type="number" step="0.01" style="max-width:140px;text-align:right" value="${it.amount || ''}">
           <button class="btn danger small" onclick="this.closest('[data-cost]').remove()">✕</button>
@@ -1557,7 +1590,8 @@ window.costAdd = function () {
   $('#costRows').insertAdjacentHTML('beforeend', `
     <div class="row" style="align-items:center;margin-bottom:8px" data-cost>
       <input class="input grow cost-label" placeholder="e.g. Rebar package">
-      <select class="input cost-cat" style="max-width:150px">${['Materials', 'Labor', 'Subcontractor', 'Permits', 'Equipment', 'Other'].map(x => `<option>${x}</option>`).join('')}</select>
+      ${costScopeSelect('pool')}
+      <select class="input cost-cat" style="max-width:150px">${CAT_OPTS.map(x => `<option>${x}</option>`).join('')}</select>
       <span style="font-weight:700;color:var(--mid)">$</span>
       <input class="input cost-amount" type="number" step="0.01" style="max-width:140px;text-align:right">
       <button class="btn danger small" onclick="this.closest('[data-cost]').remove()">✕</button>
@@ -1566,6 +1600,7 @@ window.costAdd = function () {
 window.costSave = async function (id) {
   const items = [...document.querySelectorAll('[data-cost]')].map(r => ({
     label: r.querySelector('.cost-label').value, category: r.querySelector('.cost-cat').value,
+    scope: r.querySelector('.cost-scope').value,
     amount: Number(r.querySelector('.cost-amount').value) || 0,
     ...(r.dataset.fileid ? { fileId: r.dataset.fileid } : {}),
   })).filter(i => i.label.trim());
