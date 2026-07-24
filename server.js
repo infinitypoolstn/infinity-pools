@@ -112,6 +112,10 @@ function publicClientView(c) {
       clientSummary: (store.data.settings.phaseTemplate.find(t => t.key === p.key) || {}).clientSummary || '',
       clientLabel: (store.data.settings.phaseTemplate.find(t => t.key === p.key) || {}).clientLabel || p.name,
     })),
+    // Optional stages that bracket the pool build, shown as extra steps on the
+    // client's Build Tracker when included. status: pending | active | complete.
+    siteExcavation: { included: !!(c.siteExcavation && c.siteExcavation.included), status: (c.siteExcavation && c.siteExcavation.status) || 'pending' },
+    landscaping: { included: !!(c.landscaping && c.landscaping.included), status: (c.landscaping && c.landscaping.status) || 'pending' },
     selectedFinishes: (c.selectedFinishes || []).map(name => {
       const f = store.data.finishes.find(f => f.name === name || (f.brand + ' ' + f.name) === name);
       return f ? { name: f.name, brand: f.brand, image: f.localImage || f.imageUrl, color: f.color, tier: f.tier } : { name };
@@ -193,6 +197,8 @@ app.get('/api/bootstrap', (req, res) => {
       _costs: store.costTotal(c),
       _collected: store.collected(c),
       _currentPhase: store.currentPhase(c),
+      _siteExcavationTotal: store.moduleTotal(c.siteExcavation),
+      _landscapingTotal: store.moduleTotal(c.landscaping),
     })),
   });
 });
@@ -269,7 +275,7 @@ app.put('/api/clients/:id', (req, res) => {
     // the Finance line items so the two totals always match.
     c.finance = store.specsToFinance(b.specs);
   }
-  for (const k of ['name', 'address', 'email', 'phone', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview']) {
+  for (const k of ['name', 'address', 'email', 'phone', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping']) {
     if (b[k] !== undefined) c[k] = b[k];
   }
   if (b.finance !== undefined) {
@@ -332,6 +338,40 @@ app.post('/api/clients/:id/phases/:key/request-payment', wrap(async (req, res) =
   const rec = await alerts.sendPaymentRequest(c, p);
   res.json({ client: c, email: rec });
 }));
+
+// ---------------------------------------------------------------------------
+// Optional project modules (Site Excavation / Landscaping) — lightweight stage
+// tracking. Starting a stage spawns its master task list; no payment draws.
+// ---------------------------------------------------------------------------
+const MODULE_KEYS = ['siteExcavation', 'landscaping'];
+app.post('/api/clients/:id/modules/:module/start', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const key = req.params.module;
+  if (!MODULE_KEYS.includes(key)) return res.status(404).json({ error: 'Unknown module' });
+  const m = c[key];
+  if (!m || !m.included) return res.status(400).json({ error: 'Module is not included on this project' });
+  m.status = 'active';
+  m.startedAt = new Date().toISOString();
+  const label = key === 'siteExcavation' ? 'Site Excavation' : 'Landscaping';
+  store.addAlert(`${c.address}: ${label} stage started`, { clientId: c.id, type: 'info' });
+  const tasks = await alerts.spawnModuleTasks(c, key);
+  store.save();
+  res.json({ client: c, tasks });
+}));
+
+app.post('/api/clients/:id/modules/:module/complete', (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const key = req.params.module;
+  if (!MODULE_KEYS.includes(key)) return res.status(404).json({ error: 'Unknown module' });
+  const m = c[key];
+  if (!m) return res.status(404).json({ error: 'Module not found' });
+  m.status = 'complete';
+  m.completedAt = new Date().toISOString();
+  const label = key === 'siteExcavation' ? 'Site Excavation' : 'Landscaping';
+  store.addAlert(`${c.address}: ${label} stage completed`, { clientId: c.id, type: 'info' });
+  store.save();
+  res.json({ client: c });
+});
 
 // ---------------------------------------------------------------------------
 // Contract lifecycle

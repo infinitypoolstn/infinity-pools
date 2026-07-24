@@ -197,6 +197,17 @@ function dashProjectsHTML() {
   if (!list.length) return `<table class="tbl"><thead><tr>${head}</tr></thead></table><p class="muted" style="margin-top:8px">No projects match this filter.</p>`;
   const rows = list.map(c => {
     const profit = c._quote + c._coTotal - c._costs;
+    const modChip = (m, total, emoji, label) => {
+      if (!m || !m.included) return '';
+      const st = m.status === 'active' ? 'In progress' : m.status === 'complete' ? 'Done' : 'Not started';
+      return `<span class="chip" style="background:#eef3f8;color:#33506b;margin-right:8px">${emoji} ${label} · ${money(total)} · ${st}</span>`;
+    };
+    const sub = c.projectType !== 'repair'
+      ? modChip(c.siteExcavation, c._siteExcavationTotal, '🏗', 'Site Excavation') + modChip(c.landscaping, c._landscapingTotal, '🌳', 'Landscaping')
+      : '';
+    const subRow = sub
+      ? `<tr class="subrow" style="cursor:pointer" onclick="location.hash='#/client/${c.id}/overview'"><td colspan="${DASH_COLS.length}" style="padding-top:0;border-top:0"><div class="muted" style="font-size:12px">↳ ${sub}</div></td></tr>`
+      : '';
     return `<tr style="cursor:pointer" onclick="location.hash='#/client/${c.id}'">
       <td>${c.testMode ? '<span class="chip" style="background:#fde8c8;color:#8a5a10;margin-right:6px">🧪 TEST</span>' : ''}<b>${esc(c.address) || '<i>no address</i>'}</b><div class="muted">${esc(c.name)}</div></td>
       <td><span class="chip ${c.status}">${statusLabel[c.status]}</span>${c.targetFinishDate ? `<div class="muted">🎯 finish ${fmtDate(c.targetFinishDate)}</div>` : ''}</td>
@@ -206,7 +217,7 @@ function dashProjectsHTML() {
       <td class="right money">${c._coTotal ? money(c._coTotal) : '—'}</td>
       <td class="right money">${c._costs ? money(c._costs) : '—'}</td>
       <td class="right money" style="color:${profit >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${money(profit)}</td>
-    </tr>`;
+    </tr>${subRow}`;
   }).join('');
   return `<table class="tbl"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
     <p class="muted" style="margin-top:8px;font-size:12px">Showing ${list.length} of ${S.clients.length} project${S.clients.length === 1 ? '' : 's'}.</p>`;
@@ -301,7 +312,7 @@ function vProjects() {
 }
 
 /* ============================== CLIENT DETAIL ============================== */
-const TABS = [['specs', 'Pool Specs'], ['scope', 'Scope of Work'], ['design', 'Design'], ['finance', 'Finance'], ['files', 'Files'], ['contract', 'Contract & Phases'], ['tasks', 'Tasks'], ['changes', 'Change Orders'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
+const TABS = [['overview', 'Overview'], ['siteExcavation', 'Site Excavation'], ['specs', 'Pool Specs'], ['scope', 'Scope of Work'], ['design', 'Design'], ['finance', 'Finance'], ['files', 'Files'], ['contract', 'Contract & Phases'], ['tasks', 'Tasks'], ['changes', 'Change Orders'], ['landscaping', 'Landscaping'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
 // Repair projects skip the new-pool build tabs and lead with the Repair tab.
 const REPAIR_TABS = [['repair', 'Repair'], ['files', 'Files'], ['tasks', 'Tasks'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
 
@@ -329,7 +340,7 @@ function vClient(id, tab) {
       ${tabs.map(([k, l]) => `<button class="${k === tab ? 'active' : ''}" onclick="location.hash='#/client/${c.id}/${k}'">${l}</button>`).join('')}
     </div>
     <div id="tabBody"></div>`;
-  ({ specs: tSpecs, scope: tScope, design: tDesign, finance: tFinance, files: tFiles, contract: tContract, tasks: tTasks, changes: tChanges, costs: tCosts, portal: tPortal, repair: tRepair }[tab] || (isRepair ? tRepair : tSpecs))(c);
+  ({ overview: tOverview, siteExcavation: c => tModule(c, 'siteExcavation'), landscaping: c => tModule(c, 'landscaping'), specs: tSpecs, scope: tScope, design: tDesign, finance: tFinance, files: tFiles, contract: tContract, tasks: tTasks, changes: tChanges, costs: tCosts, portal: tPortal, repair: tRepair }[tab] || (isRepair ? tRepair : tOverview))(c);
 }
 
 window.editClientInfo = function (id) {
@@ -1144,6 +1155,150 @@ function tTasks(c) {
     </div>`;
 }
 
+/* ---------- Overview tab + optional modules (Site Excavation / Landscaping) ---------- */
+const MODULE_META = {
+  siteExcavation: { label: 'Site Excavation', emoji: '🏗' },
+  landscaping: { label: 'Landscaping', emoji: '🌳' },
+};
+const moduleSum = m => (m && m.items || []).reduce((a, i) => a + (Number(i.price) || 0), 0);
+const modStatusChip = st => st === 'active'
+  ? '<span class="chip phase">In progress</span>'
+  : st === 'complete' ? '<span class="chip completed">✅ Done</span>' : '<span class="chip prospect">Not started</span>';
+
+// The project homepage: which components are in play (Site Excavation → Pool →
+// Landscaping), each with pricing and the current step. Include toggles live here.
+function tOverview(c) {
+  const se = c.siteExcavation || {}, ls = c.landscaping || {};
+  const poolQuote = Number(c._quote) || 0;
+  const seTotal = moduleSum(se), lsTotal = moduleSum(ls);
+  const grand = poolQuote + (se.included ? seTotal : 0) + (ls.included ? lsTotal : 0);
+  const cur = c._currentPhase;
+  // Which overall stage is live: site excavation, the pool build, or landscaping.
+  const stage = se.status === 'active' ? 'site' : ls.status === 'active' ? 'land' : (cur ? 'pool' : (c.status === 'completed' ? 'done' : 'pool'));
+  const stepPill = (on, label, sub) => `
+    <div style="flex:1;min-width:130px;text-align:center;padding:10px 8px;border-radius:10px;border:2px solid ${on ? 'var(--blue-mid)' : 'var(--line,#e3e8ee)'};background:${on ? 'var(--blue-soft)' : '#fff'}">
+      <div style="font-weight:700;color:${on ? 'var(--blue-dark)' : 'var(--mid)'}">${label}</div>
+      ${sub ? `<div class="muted" style="font-size:12px;margin-top:2px">${sub}</div>` : ''}
+    </div>`;
+  const moduleCard = (key) => {
+    const m = c[key] || {}, meta = MODULE_META[key], total = moduleSum(m);
+    return `<div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">${meta.emoji} ${meta.label}</h2>
+        <label class="check" style="margin:0"><input type="checkbox" ${m.included ? 'checked' : ''} onchange="toggleModule('${c.id}','${key}',this.checked)"> Include in this project</label>
+      </div>
+      ${m.included ? `
+        <div class="row" style="justify-content:space-between;align-items:center;margin-top:8px">
+          <div>${modStatusChip(m.status)} <span class="muted" style="margin-left:6px">Subtotal</span> <b>${money(total)}</b></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a class="btn secondary small" href="#/client/${c.id}/${key}">✏️ Edit details & pricing</a>
+            ${m.status === 'pending' ? `<button class="btn small green" onclick="moduleStart('${c.id}','${key}')">▶ Start stage</button>` : ''}
+            ${m.status === 'active' ? `<button class="btn small" onclick="moduleComplete('${c.id}','${key}')">✓ Mark complete</button>` : ''}
+          </div>
+        </div>`
+      : '<p class="muted" style="margin:8px 0 0">Not included. Toggle on to add pricing and show this stage to the client.</p>'}
+    </div>`;
+  };
+  $('#tabBody').innerHTML = `
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;background:var(--blue-soft);flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">Project Total</h2>
+      <span class="total-line">${money(grand)}</span>
+    </div>
+    <div class="card">
+      <h2 style="margin:0 0 10px">Where we are</h2>
+      <div class="row" style="gap:10px;align-items:stretch">
+        ${se.included ? stepPill(stage === 'site', '🏗 Site Excavation', modStatusChip(se.status).replace(/<[^>]+>/g, '')) : ''}
+        ${stepPill(stage === 'pool', '🏊 Pool', cur ? esc(cur.name) : (c.status === 'completed' ? 'Complete' : 'Not started'))}
+        ${ls.included ? stepPill(stage === 'land', '🌳 Landscaping', modStatusChip(ls.status).replace(/<[^>]+>/g, '')) : ''}
+      </div>
+      ${!se.included && !ls.included ? '<p class="muted" style="margin:10px 0 0">Pool only. Turn on Site Excavation or Landscaping below to add those stages.</p>' : ''}
+    </div>
+    ${moduleCard('siteExcavation')}
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">🏊 Pool</h2>
+        <div>${cur ? `<span class="chip phase">${esc(cur.name)}</span>` : c.status === 'completed' ? '🏁 Done' : '<span class="chip prospect">Not started</span>'} <span class="muted" style="margin-left:6px">Quote</span> <b>${money(poolQuote)}</b></div>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Pool pricing comes from <a href="#/client/${c.id}/specs">Pool Specs</a>; build phases are on <a href="#/client/${c.id}/contract">Contract & Phases</a>.</p>
+    </div>
+    ${moduleCard('landscaping')}`;
+}
+
+// Site Excavation / Landscaping tab: details + priced line items (add/remove).
+// The include toggle lives on the Overview tab; here we just show its state.
+const moduleItemRow = it => {
+  it = it || {};
+  return `<div class="row" data-moditem style="align-items:flex-end">
+    <label class="fld grow">Item<input type="text" class="mi-label" value="${esc(it.label)}" placeholder="e.g. Rock removal"></label>
+    <label class="fld grow">Details<input type="text" class="mi-value" value="${esc(it.value)}"></label>
+    <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="mi-price" value="${it.price || ''}" oninput="moduleRecalc()"></label>
+    <button class="btn danger small" style="margin-bottom:12px" onclick="this.closest('[data-moditem]').remove();moduleRecalc()">✕</button>
+  </div>`;
+};
+function tModule(c, key) {
+  const m = c[key] || {}, meta = MODULE_META[key];
+  const items = m.items || [];
+  $('#tabBody').innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">${meta.emoji} ${meta.label}</h2>
+        <div>${modStatusChip(m.status)} ${m.included ? '<span class="chip active" style="margin-left:6px">Included</span>' : ''}</div>
+      </div>
+      ${!m.included ? `<div class="banner info" style="margin-top:10px">Not included on this project yet. <a href="#/client/${c.id}/overview">Enable it on the Overview tab</a> to count its pricing and show the stage to the client. You can still enter details and pricing below.</div>` : ''}
+      <div class="row" style="margin-top:8px">
+        <label class="fld grow">Details<textarea id="mod_details" placeholder="Scope notes for ${meta.label.toLowerCase()}…">${esc(m.details)}</textarea></label>
+      </div>
+      <h3 style="margin:12px 0 4px">Priced line items</h3>
+      <div id="mod_items">${items.map(moduleItemRow).join('')}</div>
+      <button class="btn secondary small" onclick="addModuleItemRow()">＋ Add priced item</button>
+      <div class="row" style="justify-content:space-between;align-items:center;margin-top:12px">
+        <span class="muted">Subtotal: <b id="modSubtotal">${money(moduleSum(m))}</b></span>
+        <button class="btn" onclick="saveModule('${c.id}','${key}')">💾 Save ${meta.label}</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 6px">Stage progress</h3>
+      <p class="muted" style="margin:0 0 10px">Starting the stage spawns its task list and shows it to the client. Draws/invoicing are unaffected.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${modStatusChip(m.status)}
+        ${m.included && m.status === 'pending' ? `<button class="btn small green" onclick="moduleStart('${c.id}','${key}')">▶ Start stage</button>` : ''}
+        ${m.status === 'active' ? `<button class="btn small" onclick="moduleComplete('${c.id}','${key}')">✓ Mark complete</button>` : ''}
+      </div>
+    </div>`;
+}
+window.moduleRecalc = function () {
+  const total = [...document.querySelectorAll('.mi-price')].reduce((a, i) => a + (Number(i.value) || 0), 0);
+  const el = document.getElementById('modSubtotal'); if (el) el.textContent = money(total);
+};
+window.addModuleItemRow = function () {
+  const el = document.getElementById('mod_items'); if (!el) return;
+  el.insertAdjacentHTML('beforeend', moduleItemRow({}));
+};
+window.toggleModule = async function (id, key, included) {
+  const c = client(id);
+  const module = Object.assign({}, c[key] || {}, { included: !!included });
+  try { await api('PUT', '/api/clients/' + id, { [key]: module }); await reload(); route(); }
+  catch (e) { toast(e.message, true); }
+};
+window.saveModule = async function (id, key) {
+  const c = client(id);
+  const items = [...document.querySelectorAll('[data-moditem]')]
+    .map(r => ({ label: r.querySelector('.mi-label').value, value: r.querySelector('.mi-value').value, price: Number(r.querySelector('.mi-price').value) || 0 }))
+    .filter(x => x.label.trim());
+  const details = (document.getElementById('mod_details') || {}).value || '';
+  const module = Object.assign({}, c[key] || {}, { details, items });
+  try { await api('PUT', '/api/clients/' + id, { [key]: module }); await reload(); route(); toast(MODULE_META[key].label + ' saved'); }
+  catch (e) { toast(e.message, true); }
+};
+window.moduleStart = async function (id, key) {
+  try { await api('POST', `/api/clients/${id}/modules/${key}/start`, {}); await reload(); route(); toast(MODULE_META[key].label + ' started — tasks created'); }
+  catch (e) { toast(e.message, true); }
+};
+window.moduleComplete = async function (id, key) {
+  try { await api('POST', `/api/clients/${id}/modules/${key}/complete`, {}); await reload(); route(); toast(MODULE_META[key].label + ' marked complete'); }
+  catch (e) { toast(e.message, true); }
+};
+
 /* ---------- Repair tab ---------- */
 function repairItemRow(it) {
   it = it || {};
@@ -1870,6 +2025,26 @@ function vSettings() {
       <p class="muted" style="font-size:12px;margin-top:6px">New phase sections are added to your standard phase list at a 0% draw (no change to the payment schedule) and apply to newly created projects.</p>
     </div>
     <div class="card" style="max-width:860px">
+      <h2>Site Excavation & Landscaping Task Lists</h2>
+      <p class="muted">Master task lists for the optional Site Excavation and Landscaping stages. When a project's stage is started (on its Overview tab), these tasks are created with due dates counted from the start day, and assignees are emailed.</p>
+      <div id="moduleWorkflows">
+      ${[['siteExcavation', '🏗 Site Excavation'], ['landscaping', '🌳 Landscaping']].map(([key, name]) => `
+        <h3 style="color:var(--blue-dark)">${name}</h3>
+        <div data-mtmodule="${key}">
+        ${((S.settings.moduleTaskTemplates || {})[key] || []).map(t => `
+          <div class="row" data-mtrow style="align-items:center;margin-bottom:6px">
+            <input class="input grow mt-title" value="${esc(t.title)}" placeholder="Task">
+            <select class="input mt-emp" style="max-width:170px"><option value="">unassigned</option>${S.employees.map(e => `<option value="${e.id}" ${t.employeeId === e.id ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>
+            <span class="muted" style="white-space:nowrap">due +</span>
+            <input class="input mt-off" type="number" min="0" style="max-width:70px" value="${Number(t.dueOffsetDays) || 0}">
+            <span class="muted">days</span>
+            <button class="btn danger small" onclick="this.closest('[data-mtrow]').remove()">✕</button>
+          </div>`).join('')}
+        </div>
+        <button class="btn secondary small" style="margin-bottom:10px" onclick="mtAdd('${key}')">＋ Add task to ${name}</button>`).join('')}
+      </div>
+    </div>
+    <div class="card" style="max-width:860px">
       <h2>Scope of Work (master template)</h2>
       <p class="muted">The default Scope of Work copied into every new project's contract. You can still edit any individual client's scope on their <b>Scope of Work</b> tab without changing this master.</p>
       <div id="scopeMaster">
@@ -1964,6 +2139,17 @@ window.ttAdd = function (phaseKey) {
       <button class="btn danger small" onclick="this.closest('[data-ttrow]').remove()">✕</button>
     </div>`);
 };
+window.mtAdd = function (moduleKey) {
+  document.querySelector(`[data-mtmodule="${moduleKey}"]`).insertAdjacentHTML('beforeend', `
+    <div class="row" data-mtrow style="align-items:center;margin-bottom:6px">
+      <input class="input grow mt-title" placeholder="Task">
+      <select class="input mt-emp" style="max-width:170px"><option value="">unassigned</option>${S.employees.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>
+      <span class="muted" style="white-space:nowrap">due +</span>
+      <input class="input mt-off" type="number" min="0" style="max-width:70px" value="1">
+      <span class="muted">days</span>
+      <button class="btn danger small" onclick="this.closest('[data-mtrow]').remove()">✕</button>
+    </div>`);
+};
 // One master-template line row (DOM-based) with the same move/indent/delete
 // abilities as the per-client Scope tab.
 function smLineRowHTML(text, indent) {
@@ -2041,6 +2227,14 @@ window.settingsSave = async function () {
       phaseTemplate.push(existingPhase[key]);
     }
   });
+  const moduleTaskTemplates = {};
+  document.querySelectorAll('[data-mtmodule]').forEach(mod => {
+    moduleTaskTemplates[mod.dataset.mtmodule] = [...mod.querySelectorAll('[data-mtrow]')].map(r => ({
+      title: r.querySelector('.mt-title').value,
+      employeeId: r.querySelector('.mt-emp').value || null,
+      dueOffsetDays: Number(r.querySelector('.mt-off').value) || 0,
+    })).filter(t => t.title.trim());
+  });
   const scopeTemplate = [...document.querySelectorAll('[data-scopesec]')].map(sec => ({
     key: sec.dataset.key || ('custom_' + Math.random().toString(36).slice(2, 8)),
     title: sec.querySelector('.sm-title').value,
@@ -2052,6 +2246,7 @@ window.settingsSave = async function () {
   })).filter(s => s.title.trim());
   await api('PUT', '/api/settings', {
     taskTemplates,
+    moduleTaskTemplates,
     phaseTemplate,
     scopeTemplate,
     companyName: $('#stName').value, companyEmail: $('#stEmail').value,

@@ -418,14 +418,31 @@ function renderPortal(d) {
 
   const stepCls = (p, i) => p.status === 'complete' ? 'past' : (p.status === 'active' ? 'current' : 'future');
 
+  // Optional stages that bracket the pool build (Site Excavation before, Landscaping
+  // after). Shown as extra tracker steps only when included on this project.
+  const se = d.siteExcavation || {}, ls = d.landscaping || {};
+  const modStepCls = st => st === 'complete' ? 'past' : st === 'active' ? 'current' : 'future';
+  const modStep = (m, emoji, label) => (m && m.included)
+    ? `<div class="step ${modStepCls(m.status)}"><div class="bar"></div><div class="dot">${m.status === 'complete' ? '✓' : emoji}</div><div class="lbl">${label}</div></div>`
+    : '';
+  const activeMod = se.status === 'active' ? { emoji: '🏗', label: 'Site Excavation' }
+    : ls.status === 'active' ? { emoji: '🌳', label: 'Landscaping' } : null;
+
   // ---- Left column: Build Tracker + Interior Finish ----
   const trackerHtml = `
     <div class="card">
       <h2>Build Tracker</h2>
       <div class="tracker">
+        ${modStep(se, '🏗', 'Site Excavation')}
         ${phases.map((p, i) => `<div class="step ${stepCls(p, i)}"><div class="bar"></div><div class="dot">${p.status === 'complete' ? '✓' : i + 1}</div><div class="lbl">${esc(p.clientLabel)}</div></div>`).join('')}
+        ${modStep(ls, '🌳', 'Landscaping')}
       </div>
       <div style="margin-top:18px">${poolSvg(stage, finishColor)}</div>
+      ${activeMod ? `
+        <div style="margin-top:16px">
+          <div style="font-weight:800;color:var(--blue);font-size:17px">Now: ${activeMod.emoji} ${activeMod.label}</div>
+          <p style="margin:6px 0 0">Our crew is working on the ${activeMod.label.toLowerCase()} stage of your project.</p>
+        </div>` : ''}
       ${cur ? `
         <div style="margin-top:16px">
           <div style="font-weight:800;color:var(--blue);font-size:17px">Now: ${esc(cur.name)} ${cur.dueDate ? '<span class="muted" style="font-weight:600">· target ' + fmtDate(cur.dueDate) + '</span>' : ''}</div>
@@ -490,10 +507,19 @@ function renderPortal(d) {
       }).join('')}
     </div>` : '';
 
+  const modPhaseItem = (m, emoji, label, summary) => (m && m.included) ? `
+    <div class="phase-item ${modStepCls(m.status)}">
+      <div class="ico">${m.status === 'complete' ? '✅' : emoji}</div>
+      <div>
+        <div class="nm">${label} <span class="muted" style="font-weight:500">· ${m.status === 'complete' ? 'completed' : m.status === 'active' ? 'in progress' : 'upcoming'}</span></div>
+        <div class="desc">${summary}</div>
+      </div>
+    </div>` : '';
   const phasesHtml = `
     <div class="card">
       <h2>All Phases</h2>
       <div class="phase-list">
+        ${modPhaseItem(se, '🏗', 'Site Excavation', 'Site preparation and excavation before the pool build begins.')}
         ${phases.map((p, i) => `
           <div class="phase-item ${stepCls(p, i)}">
             <div class="ico">${p.status === 'complete' ? '✅' : ICONS[i] || '🔹'}</div>
@@ -503,6 +529,7 @@ function renderPortal(d) {
               ${p.drawPct > 0 ? `<div class="muted" style="margin-top:3px">${p.drawPct}% draw — ${money(p.amountDue)}${p.paymentReceivedAt ? ' · ✓ paid' : ''}</div>` : ''}
             </div>
           </div>`).join('')}
+        ${modPhaseItem(ls, '🌳', 'Landscaping', 'Landscaping, planting, and final site finishing after the pool is complete.')}
       </div>
     </div>`;
 
