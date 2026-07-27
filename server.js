@@ -374,6 +374,70 @@ app.post('/api/clients/:id/modules/:module/complete', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Dirtworks Ledger integration — pull a linked job's expenses into a project's
+// Site Excavation costs. Read-only, server-to-server (token never hits browser).
+// ---------------------------------------------------------------------------
+// Map a Dirtworks expense category onto our internal cost categories.
+const DW_CAT_MAP = {
+  'Labor': 'Labor', 'Equipment Rental': 'Equipment', 'Fuel': 'Equipment',
+  'Materials': 'Materials', 'Supplies': 'Materials', 'Repairs & Maintenance': 'Equipment',
+  'Permits & Fees': 'Permits', 'Subcontractor': 'Subcontractor', 'Meals': 'Other',
+};
+
+async function dirtworksFetch(pathAndQuery) {
+  const dw = store.data.settings.dirtworks || {};
+  if (!dw.exportToken) throw new Error('Dirtworks export token is not set — add it in Settings.');
+  const base = (dw.url || 'https://dirtworks-ledger.onrender.com').replace(/\/+$/, '');
+  let r;
+  try {
+    r = await fetch(base + pathAndQuery, { headers: { 'X-Export-Token': dw.exportToken } });
+  } catch (e) {
+    throw new Error('Could not reach Dirtworks at ' + base + ' (' + e.message + ')');
+  }
+  if (!r.ok) {
+    if (r.status === 401) throw new Error('Dirtworks rejected the export token — check it matches EXPORT_TOKEN on the Dirtworks service.');
+    if (r.status === 501) throw new Error('Dirtworks export is not enabled — set EXPORT_TOKEN (and Upstash sync) on the Dirtworks service.');
+    if (r.status === 404) throw new Error('That Dirtworks job was not found.');
+    throw new Error('Dirtworks returned error ' + r.status + '.');
+  }
+  return r.json();
+}
+
+// Proxy the job list so the admin can pick one to link (and to test the connection).
+app.get('/api/dirtworks/jobs', wrap(async (req, res) => {
+  const data = await dirtworksFetch('/api/export/jobs');
+  res.json(data);
+}));
+
+// Pull the linked job's expenses in as Site Excavation cost lines (idempotent:
+// previously-pulled Dirtworks lines are replaced by the current set).
+app.post('/api/clients/:id/modules/siteExcavation/pull-dirtworks', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const m = c.siteExcavation;
+  const jobId = String((req.body && req.body.jobId) || (m && m.dirtworksJobId) || '').trim();
+  if (!jobId) return res.status(400).json({ error: 'No Dirtworks job linked — choose a job first.' });
+  const data = await dirtworksFetch('/api/export/jobs/' + encodeURIComponent(jobId));
+  const expenses = data.expenses || [];
+  c.costs.items = (c.costs.items || []).filter(it => it.source !== 'dirtworks');
+  let total = 0;
+  for (const e of expenses) {
+    const label = (e.store || 'Expense') + (e.product && e.product !== '—' ? ' — ' + e.product : '');
+    const amount = Number(e.amount) || 0;
+    c.costs.items.push({
+      id: store.id(), label, category: DW_CAT_MAP[e.category] || 'Other',
+      scope: 'siteExcavation', amount, source: 'dirtworks', sourceId: e.id, dwJobId: jobId,
+    });
+    total += amount;
+  }
+  m.dirtworksJobId = jobId;
+  m.dirtworksJobName = (data.job && data.job.name) || '';
+  m.dirtworksPulledAt = new Date().toISOString();
+  store.addAlert(`${c.address}: pulled ${expenses.length} Site Excavation cost line(s) from Dirtworks (${alerts.fmtMoney(total)})`, { clientId: c.id, type: 'info' });
+  store.save();
+  res.json({ client: c, added: expenses.length, total });
+}));
+
+// ---------------------------------------------------------------------------
 // Contract lifecycle
 // ---------------------------------------------------------------------------
 // Blank, fillable Pool Specs intake form to hand to a sales rep. Not tied to a

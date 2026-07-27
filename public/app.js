@@ -1238,6 +1238,26 @@ const moduleItemRow = it => {
 function tModule(c, key) {
   const m = c[key] || {}, meta = MODULE_META[key];
   const items = m.items || [];
+  // Site Excavation can pull its costs from a linked Dirtworks Ledger job.
+  const dwCount = (c.costs.items || []).filter(it => it.source === 'dirtworks').length;
+  const dwConfigured = !!(S.settings.dirtworks && S.settings.dirtworks.exportToken);
+  const dwCard = key !== 'siteExcavation' ? '' : `
+    <div class="card">
+      <h3 style="margin:0 0 6px">🔗 Dirtworks Ledger</h3>
+      ${dwConfigured ? `
+        <p class="muted" style="margin:0 0 10px">Link a Dirtworks job and pull its expenses in as Site Excavation costs (on the Costs tab, tagged 🏗 Site Excavation). Re-pulling refreshes them.</p>
+        <div class="row" style="align-items:flex-end">
+          <label class="fld grow">Dirtworks job
+            <select id="dwJobSelect" class="input">
+              <option value="${esc(m.dirtworksJobId || '')}">${m.dirtworksJobName ? esc(m.dirtworksJobName) : (m.dirtworksJobId ? 'Saved job ' + esc(m.dirtworksJobId) : '— none linked —')}</option>
+            </select>
+          </label>
+          <button class="btn secondary small" style="margin-bottom:12px" onclick="dwLoadJobs()">Load jobs</button>
+          <button class="btn small" style="margin-bottom:12px" onclick="dwPull('${c.id}')">⬇ Pull expenses</button>
+        </div>
+        ${m.dirtworksPulledAt ? `<p class="muted" style="font-size:12px;margin:0">Last pulled ${fmtDateTime(m.dirtworksPulledAt)} · ${dwCount} line(s) from Dirtworks.</p>` : '<p class="muted" style="font-size:12px;margin:0">Not pulled yet. Click <b>Load jobs</b>, pick the matching job, then <b>Pull expenses</b>.</p>'}`
+      : `<p class="muted" style="margin:0">Not configured. Add your Dirtworks URL and export token in <a href="#/settings">Settings</a> to link a job here.</p>`}
+    </div>`;
   $('#tabBody').innerHTML = `
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -1264,8 +1284,29 @@ function tModule(c, key) {
         ${m.included && m.status === 'pending' ? `<button class="btn small green" onclick="moduleStart('${c.id}','${key}')">▶ Start stage</button>` : ''}
         ${m.status === 'active' ? `<button class="btn small" onclick="moduleComplete('${c.id}','${key}')">✓ Mark complete</button>` : ''}
       </div>
-    </div>`;
+    </div>
+    ${dwCard}`;
 }
+window.dwLoadJobs = async function () {
+  const sel = document.getElementById('dwJobSelect'); if (!sel) return;
+  const cur = sel.value;
+  try {
+    const r = await api('GET', '/api/dirtworks/jobs');
+    const jobs = r.jobs || [];
+    sel.innerHTML = '<option value="">— none linked —</option>' + jobs.map(j =>
+      `<option value="${esc(j.id)}" ${j.id === cur ? 'selected' : ''}>${esc(j.name)}${j.customer ? ' · ' + esc(j.customer) : ''} (${money(j.spent || 0)})</option>`).join('');
+    toast(`${jobs.length} Dirtworks job(s) loaded`);
+  } catch (e) { toast(e.message, true); }
+};
+window.dwPull = async function (id) {
+  const sel = document.getElementById('dwJobSelect');
+  const jobId = sel ? sel.value : '';
+  if (!jobId) return toast('Pick a Dirtworks job first — click “Load jobs”.', true);
+  try {
+    const r = await api('POST', `/api/clients/${id}/modules/siteExcavation/pull-dirtworks`, { jobId });
+    await reload(); route(); toast(`Pulled ${r.added} cost line(s) · ${money(r.total)}`);
+  } catch (e) { toast(e.message, true); }
+};
 window.moduleRecalc = function () {
   const total = [...document.querySelectorAll('.mi-price')].reduce((a, i) => a + (Number(i.value) || 0), 0);
   const el = document.getElementById('modSubtotal'); if (el) el.textContent = money(total);
@@ -1573,8 +1614,8 @@ function tCosts(c) {
     <div class="card" style="max-width:680px">
       <h2>Build Costs</h2>
       <div id="costRows">${c.costs.items.map(it => `
-        <div class="row" style="align-items:center;margin-bottom:8px" data-cost data-fileid="${it.fileId || ''}" title="${it.fileId ? 'Created automatically from an uploaded invoice' : ''}">
-          ${it.fileId ? '<span title="From uploaded invoice">🧾</span>' : ''}
+        <div class="row" style="align-items:center;margin-bottom:8px" data-cost data-fileid="${it.fileId || ''}" data-source="${it.source || ''}" data-sourceid="${it.sourceId || ''}" data-dwjobid="${it.dwJobId || ''}" title="${it.source === 'dirtworks' ? 'Pulled from Dirtworks — refreshed on next pull' : it.fileId ? 'Created automatically from an uploaded invoice' : ''}">
+          ${it.source === 'dirtworks' ? '<span title="Pulled from Dirtworks Ledger">🏗</span>' : it.fileId ? '<span title="From uploaded invoice">🧾</span>' : ''}
           <input class="input grow cost-label" value="${esc(it.label)}" placeholder="e.g. Shotcrete crew">
           ${costScopeSelect(it.scope)}
           <select class="input cost-cat" style="max-width:150px">${CAT_OPTS.map(x => `<option ${it.category === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
@@ -1603,6 +1644,7 @@ window.costSave = async function (id) {
     scope: r.querySelector('.cost-scope').value,
     amount: Number(r.querySelector('.cost-amount').value) || 0,
     ...(r.dataset.fileid ? { fileId: r.dataset.fileid } : {}),
+    ...(r.dataset.source ? { source: r.dataset.source, sourceId: r.dataset.sourceid, dwJobId: r.dataset.dwjobid } : {}),
   })).filter(i => i.label.trim());
   await api('PUT', '/api/clients/' + id, { costs: { items } });
   await reload(); toast('Costs saved'); route();
@@ -2025,6 +2067,18 @@ function vSettings() {
       </div>
     </div>
     <div class="card" style="max-width:760px">
+      <h2>Dirtworks Ledger (Site Excavation costs) ${(st.dirtworks || {}).exportToken ? '<span class="chip active">configured</span>' : '<span class="chip prospect">not configured</span>'}</h2>
+      <p class="muted">Link a Dirtworks Ledger job to a project's <b>Site Excavation</b> tab and pull its expenses in as costs. Set the export token here to match <code>EXPORT_TOKEN</code> on the Dirtworks service.</p>
+      <div class="row">
+        <label class="fld grow" style="flex:2">Dirtworks URL<input type="text" id="dwUrl" value="${esc((st.dirtworks || {}).url || 'https://dirtworks-ledger.onrender.com')}" placeholder="https://dirtworks-ledger.onrender.com"></label>
+        <label class="fld grow">Export Token<input type="text" id="dwToken" value="${esc((st.dirtworks || {}).exportToken || '')}" placeholder="Shared secret (EXPORT_TOKEN)"></label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary small" onclick="testDirtworks()">Test Connection</button>
+        <span class="muted" style="font-size:12px;align-self:center">On the Dirtworks Render service, set <code>EXPORT_TOKEN</code> to the same value (requires Upstash sync configured there).</span>
+      </div>
+    </div>
+    <div class="card" style="max-width:760px">
       <h2>Haul-Off &amp; Gravel Rates</h2>
       <p class="muted">Default per-unit rates for haul-off and gravel change orders. Pre-filled on each client's Change Orders page and editable per job.</p>
       ${S.marketRates ? `<div class="banner info" style="margin-bottom:12px">
@@ -2289,6 +2343,7 @@ window.settingsSave = async function () {
     gmail: { user: $('#stGUser').value.trim(), appPassword: $('#stGPass').value.trim() },
     quickbooks: { ...S.settings.quickbooks, realmId: $('#qbRealm').value.trim(), environment: $('#qbEnv').value, clientId: $('#qbCid').value.trim(), clientSecret: $('#qbSec').value.trim(), refreshToken: $('#qbTok').value.trim(), achFeeNote: $('#qbAch').value, ccFeeNote: $('#qbCc').value, passFeesToClient: $('#qbPass').checked },
     docuseal: { apiKey: $('#dsKey').value.trim(), apiBaseUri: $('#dsBase').value.trim() || 'https://api.docuseal.com' },
+    dirtworks: { url: $('#dwUrl').value.trim() || 'https://dirtworks-ledger.onrender.com', exportToken: $('#dwToken').value.trim() },
     haulRates: { triAxle: Number($('#hrTriAxle').value) || 500, gravel: Number($('#hrGravel').value) || 1000 },
     disclosures,
   });
@@ -2299,6 +2354,13 @@ window.testDocuseal = async function () {
   try {
     await api('POST', '/api/settings/docuseal/test');
     toast('DocuSeal connected ✓');
+  } catch (e) { toast(e.message, true); }
+};
+window.testDirtworks = async function () {
+  await settingsSave();
+  try {
+    const r = await api('GET', '/api/dirtworks/jobs');
+    toast(`Dirtworks connected ✓ · ${(r.jobs || []).length} job(s) found`);
   } catch (e) { toast(e.message, true); }
 };
 window.testQuickBooks = async function () {
