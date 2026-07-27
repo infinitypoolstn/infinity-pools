@@ -1169,6 +1169,25 @@ const modStatusChip = st => st === 'active'
 // Landscaping), each with pricing and the current step. Include toggles live here.
 function tOverview(c) {
   const se = c.siteExcavation || {}, ls = c.landscaping || {};
+  // Size summary pulled from Pool Specs — the dimensioned fields, shown read-only
+  // on the Pool card (edit them on the Pool Specs tab).
+  const sp = c.specs || {}, pb = sp.poolBase || {}, spa = sp.spaBase || {}, fl = sp.fireLounge || {};
+  const sizeRows = [];
+  sizeRows.push(['Shape', pb.shape === 'freeform' ? ('Freeform' + (pb.freeform ? ' — ' + pb.freeform : '')) : 'Geometric']);
+  if (pb.size) sizeRows.push(['Pool size', pb.size]);
+  if (pb.depth) sizeRows.push(['Depth', pb.depth]);
+  if (spa.included && spa.size) sizeRows.push(['Spa size', spa.size]);
+  if (fl.included && fl.size) sizeRows.push(['Fire Lounge size', fl.size]);
+  const ssf = pb.sunShelf || {}, spf = pb.spillover || {}, lgf = pb.ledgeSeating || {};
+  if (ssf.included && ssf.details) sizeRows.push(['Sun Shelf', ssf.details]);
+  if (spf.included && spf.details) sizeRows.push(['Spillover', spf.details]);
+  if (lgf.included && lgf.details) sizeRows.push(['Ledge / Seating', lgf.details]);
+  const hasDims = !!(pb.size || pb.depth || (spa.included && spa.size) || (fl.included && fl.size));
+  const sizeSummary = `
+    <div style="margin-top:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px;max-width:520px">
+      ${sizeRows.map(([k, v]) => `<div class="muted">${k}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
+    </div>
+    ${!hasDims ? `<p class="muted" style="margin:8px 0 0;font-size:12px">No sizes entered yet — add them on <a href="#/client/${c.id}/specs">Pool Specs</a>.</p>` : ''}`;
   const poolQuote = Number(c._quote) || 0;
   const seTotal = moduleSum(se), lsTotal = moduleSum(ls);
   const grand = poolQuote + (se.included ? seTotal : 0) + (ls.included ? lsTotal : 0);
@@ -1219,7 +1238,8 @@ function tOverview(c) {
         <h2 style="margin:0">🏊 Pool</h2>
         <div>${cur ? `<span class="chip phase">${esc(cur.name)}</span>` : c.status === 'completed' ? '🏁 Done' : '<span class="chip prospect">Not started</span>'} <span class="muted" style="margin-left:6px">Quote</span> <b>${money(poolQuote)}</b></div>
       </div>
-      <p class="muted" style="margin:8px 0 0">Pool pricing comes from <a href="#/client/${c.id}/specs">Pool Specs</a>; build phases are on <a href="#/client/${c.id}/contract">Contract & Phases</a>.</p>
+      ${sizeSummary}
+      <p class="muted" style="margin:10px 0 0">Sizes and pricing come from <a href="#/client/${c.id}/specs">Pool Specs</a>; build phases are on <a href="#/client/${c.id}/contract">Contract & Phases</a>.</p>
     </div>
     ${moduleCard('landscaping')}`;
 }
