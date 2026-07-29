@@ -1232,6 +1232,18 @@ function tOverview(c) {
       </div>
       ${!se.included && !ls.included ? '<p class="muted" style="margin:10px 0 0">Pool only. Turn on Site Excavation or Landscaping below to add those stages.</p>' : ''}
     </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">📇 Contacts</h2>
+        <button class="btn small" onclick="saveContacts('${c.id}')">💾 Save Contacts</button>
+      </div>
+      <p class="muted" style="margin:4px 0 8px;font-size:12px">Team-only — name, phone, and email for the people on this project.</p>
+      <div class="row">
+        <label class="fld grow">Builder<textarea id="ct_builder" placeholder="Name · phone · email">${esc((c.contacts || {}).builder)}</textarea></label>
+        <label class="fld grow">Contractor<textarea id="ct_contractor" placeholder="Name · phone · email">${esc((c.contacts || {}).contractor)}</textarea></label>
+        <label class="fld grow">Other<textarea id="ct_other" placeholder="Name · role · phone · email">${esc((c.contacts || {}).other)}</textarea></label>
+      </div>
+    </div>
     ${moduleCard('siteExcavation')}
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -1357,6 +1369,12 @@ window.moduleStart = async function (id, key) {
 };
 window.moduleComplete = async function (id, key) {
   try { await api('POST', `/api/clients/${id}/modules/${key}/complete`, {}); await reload(); route(); toast(MODULE_META[key].label + ' marked complete'); }
+  catch (e) { toast(e.message, true); }
+};
+window.saveContacts = async function (id) {
+  const v = i => { const el = document.getElementById(i); return el ? el.value.trim() : ''; };
+  const contacts = { builder: v('ct_builder'), contractor: v('ct_contractor'), other: v('ct_other') };
+  try { await api('PUT', '/api/clients/' + id, { contacts }); await reload(); toast('Contacts saved'); }
   catch (e) { toast(e.message, true); }
 };
 
