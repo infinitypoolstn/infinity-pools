@@ -1290,6 +1290,27 @@ function tModule(c, key) {
         ${m.dirtworksPulledAt ? `<p class="muted" style="font-size:12px;margin:0">Last pulled ${fmtDateTime(m.dirtworksPulledAt)} · ${dwCount} line(s) from Dirtworks.</p>` : '<p class="muted" style="font-size:12px;margin:0">Not pulled yet. Click <b>Load jobs</b>, pick the matching job, then <b>Pull expenses</b>.</p>'}`
       : `<p class="muted" style="margin:0">Not configured. Add your Dirtworks URL and export token in <a href="#/settings">Settings</a> to link a job here.</p>`}
     </div>`;
+  // Landscaping shows any files uploaded under the "Landscape Plans" category.
+  const planFiles = key !== 'landscaping' ? [] : (c.files || []).filter(f => f.category === 'Landscape Plans');
+  const plansCard = key !== 'landscaping' ? '' : `
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h3 style="margin:0">🗺 Landscape Plans</h3>
+        <a class="btn secondary small" href="#/client/${c.id}/files">⬆ Upload on Files tab</a>
+      </div>
+      ${planFiles.length ? `<div class="row" style="flex-wrap:wrap;gap:12px;margin-top:10px">${planFiles.map(f => {
+        const src = `/uploads/${c.id}/${encodeURIComponent(f.storedName)}`;
+        const thumb = IMG_RE.test(f.originalName)
+          ? `<img src="${src}" alt="" loading="lazy" title="Click to preview" onclick="previewImg('${c.id}','${f.id}')" style="height:90px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--blue-soft);cursor:pointer">`
+          : `<span style="height:90px;width:120px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--blue-soft);background:var(--blue-pale)">📄</span>`;
+        return `<div style="width:120px">
+          ${thumb}
+          <div style="font-size:12px;font-weight:600;margin-top:4px;word-break:break-word">${esc(f.originalName)}</div>
+          <a class="btn secondary small" style="margin-top:4px" href="/api/clients/${c.id}/files/${f.id}/download">⬇ Download</a>
+        </div>`;
+      }).join('')}</div>`
+      : `<p class="muted" style="margin:10px 0 0">No landscape plans uploaded yet. Upload files under the <b>Landscape Plans</b> category on the <a href="#/client/${c.id}/files">Files</a> tab and they'll appear here.</p>`}
+    </div>`;
   $('#tabBody').innerHTML = `
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -1315,10 +1336,17 @@ function tModule(c, key) {
         ${modStatusChip(m.status)}
         ${m.included && m.status === 'pending' ? `<button class="btn small green" onclick="moduleStart('${c.id}','${key}')">▶ Start stage</button>` : ''}
         ${m.status === 'active' ? `<button class="btn small" onclick="moduleComplete('${c.id}','${key}')">✓ Mark complete</button>` : ''}
+        ${m.status !== 'pending' ? `<button class="btn secondary small" onclick="moduleReset('${c.id}','${key}')">↺ Reset stage</button>` : ''}
       </div>
     </div>
+    ${plansCard}
     ${dwCard}`;
 }
+window.moduleReset = async function (id, key) {
+  if (!confirm('Reset this stage back to Not started? Details and pricing are kept.')) return;
+  try { await api('POST', `/api/clients/${id}/modules/${key}/reset`, {}); await reload(); route(); toast(MODULE_META[key].label + ' stage reset'); }
+  catch (e) { toast(e.message, true); }
+};
 window.dwLoadJobs = async function () {
   const sel = document.getElementById('dwJobSelect'); if (!sel) return;
   const cur = sel.value;

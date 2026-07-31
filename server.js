@@ -373,6 +373,23 @@ app.post('/api/clients/:id/modules/:module/complete', (req, res) => {
   res.json({ client: c });
 });
 
+// Reset a module's stage back to Not started (keeps its details, pricing, and
+// include choice; clears start/complete timestamps).
+app.post('/api/clients/:id/modules/:module/reset', (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const key = req.params.module;
+  if (!MODULE_KEYS.includes(key)) return res.status(404).json({ error: 'Unknown module' });
+  const m = c[key];
+  if (!m) return res.status(404).json({ error: 'Module not found' });
+  m.status = 'pending';
+  m.startedAt = null;
+  m.completedAt = null;
+  const label = key === 'siteExcavation' ? 'Site Excavation' : 'Landscaping';
+  store.addAlert(`${c.address}: ${label} stage reset to Not started`, { clientId: c.id, type: 'info' });
+  store.save();
+  res.json({ client: c });
+});
+
 // ---------------------------------------------------------------------------
 // Dirtworks Ledger integration — pull a linked job's expenses into a project's
 // Site Excavation costs. Read-only, server-to-server (token never hits browser).
