@@ -349,6 +349,7 @@ window.editClientInfo = function (id) {
     <label class="fld">Client Name<input type="text" id="eName" value="${esc(c.name)}"></label>
     <label class="fld">Address<input type="text" id="eAddr" value="${esc(c.address)}"></label>
     <label class="fld">Email<input type="email" id="eEmail" value="${esc(c.email)}"></label>
+    <label class="fld">Additional portal emails<input type="text" id="eAddlEmails" value="${esc((c.additionalEmails || []).join(', '))}" placeholder="spouse@email.com, builder@email.com"><span class="muted" style="font-weight:400;font-size:12px">Comma-separated. They also receive the portal link and can log in with their own email.</span></label>
     <label class="fld">Phone<input type="tel" id="ePhone" value="${esc(c.phone)}"></label>
     <label class="fld">Status<select id="eStatus">${Object.entries(statusLabel).map(([k, v]) => `<option value="${k}" ${c.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     <label class="fld">Target Finish Date<input type="date" id="eFinish" value="${c.targetFinishDate || ''}"></label>
@@ -360,8 +361,9 @@ window.editClientInfo = function (id) {
     </div>`);
 };
 window.saveClientInfo = async function (id) {
+  const additionalEmails = ($('#eAddlEmails').value || '').split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
   try {
-    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, phone: $('#ePhone').value, status: $('#eStatus').value, targetFinishDate: $('#eFinish').value || null });
+    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, additionalEmails, phone: $('#ePhone').value, status: $('#eStatus').value, targetFinishDate: $('#eFinish').value || null });
     await reload(); closeModal(); route(); toast('Saved');
   } catch (e) { toast(e.message, true); }
 };
@@ -1740,6 +1742,7 @@ function portalAccessHTML(c) {
 }
 function tPortal(c) {
   const url = location.origin + '/portal/' + c.portalToken;
+  const recipients = [...new Set([c.email, ...(c.additionalEmails || [])].map(e => (e || '').trim()).filter(Boolean))];
   $('#tabBody').innerHTML = `
     <div class="card" style="max-width:760px">
       <h2>Client-Facing Project Page</h2>
@@ -1748,11 +1751,14 @@ function tPortal(c) {
         <input class="input grow" readonly value="${url}" onclick="this.select()">
         <button class="btn secondary" onclick="navigator.clipboard.writeText('${url}');toast('Link copied')">Copy</button>
         <a class="btn secondary" href="${url}" target="_blank">Open Preview</a>
-        ${c.email
-          ? `<button class="btn" onclick="sendPortalLink('${c.id}')">📧 Email to Client</button>`
+        ${recipients.length
+          ? `<button class="btn" onclick="sendPortalLink('${c.id}')">📧 Email to ${recipients.length > 1 ? recipients.length + ' Recipients' : 'Client'}</button>`
           : `<button class="btn" disabled title="No email address on file for this client">📧 Email to Client</button>`}
       </div>
-      ${c.contract.portalLinkSentAt ? `<p class="muted" style="margin-top:6px">Last emailed ${fmtDate(c.contract.portalLinkSentAt)}${c.email ? ' → ' + esc(c.email) : ''}</p>` : ''}
+      <p class="muted" style="margin-top:6px">
+        ${recipients.length ? `Recipients: ${recipients.map(esc).join(', ')} · <a href="#" onclick="editClientInfo('${c.id}');return false;">edit</a>` : `No email on file · <a href="#" onclick="editClientInfo('${c.id}');return false;">add one</a>`}
+        ${c.contract.portalLinkSentAt ? ` — last emailed ${fmtDate(c.contract.portalLinkSentAt)}` : ''}
+      </p>
       ${portalAccessHTML(c)}
       <h3>Client To-Do Items (shown as alerts on their page)</h3>
       <div id="todoList">${(c.clientTodos || []).map(t => `
@@ -1782,8 +1788,10 @@ window.todoSave = async function (id) {
 };
 window.sendPortalLink = async function (id) {
   try {
-    await api('POST', `/api/clients/${id}/portal/send-link`);
-    await reload(); route(); toast('Portal link emailed to client');
+    const r = await api('POST', `/api/clients/${id}/portal/send-link`);
+    await reload(); route();
+    const n = (r.recipients || []).length;
+    toast(`Portal link emailed to ${n > 1 ? n + ' recipients' : 'client'}`);
   } catch (e) { toast('Email failed: ' + e.message, true); }
 };
 

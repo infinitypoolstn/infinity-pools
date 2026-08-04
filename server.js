@@ -84,6 +84,11 @@ const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
 function portalEligible(c) {
   return !!(c.contract && (c.contract.sentAt || c.contract.signedAt)) && c.status !== 'lost';
 }
+// Every email that may receive the portal link and log in: the primary plus any
+// additionals, normalized (lowercased, trimmed, de-duplicated, non-empty).
+function clientEmails(c) {
+  return [...new Set([c.email, ...(c.additionalEmails || [])].map(e => (e || '').trim().toLowerCase()).filter(Boolean))];
+}
 // All portal projects sharing this client's email (the current one is always
 // included so the switcher can show it as selected).
 function siblingProjects(c) {
@@ -276,7 +281,7 @@ app.put('/api/clients/:id', (req, res) => {
     // the Finance line items so the two totals always match.
     c.finance = store.specsToFinance(b.specs);
   }
-  for (const k of ['name', 'address', 'email', 'phone', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
+  for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
     if (b[k] !== undefined) c[k] = b[k];
   }
   if (b.finance !== undefined) {
@@ -1027,10 +1032,11 @@ app.post('/api/test-email', wrap(async (req, res) => {
 // ---------------------------------------------------------------------------
 app.post('/api/clients/:id/portal/send-link', wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
-  if (!c.email) return res.status(400).json({ error: 'Client has no email address on file' });
+  const recipients = clientEmails(c);
+  if (!recipients.length) return res.status(400).json({ error: 'Client has no email address on file' });
   const portalUrl = `${req.protocol}://${req.get('host')}/portal/${c.portalToken}`;
   await mailer.send({
-    to: c.email,
+    to: recipients,
     subject: `Your Infinity Pools project page — ${c.address}`,
     html: `<p>Hi ${c.name.split(' ')[0]},</p>
       <p>Here is your personal project page for <b>${c.address}</b>. You can use it any time to:</p>
@@ -1048,9 +1054,9 @@ app.post('/api/clients/:id/portal/send-link', wrap(async (req, res) => {
       <p>Questions? Just reply to this email.<br>— Infinity Pools</p>`,
   });
   c.contract.portalLinkSentAt = new Date().toISOString();
-  store.addAlert(`Portal link emailed to ${c.name} (${c.email})`, { clientId: c.id });
+  store.addAlert(`Portal link emailed to ${c.name} (${recipients.join(', ')})`, { clientId: c.id });
   store.save();
-  res.json({ ok: true });
+  res.json({ ok: true, recipients });
 }));
 
 // ---------------------------------------------------------------------------
@@ -1070,7 +1076,7 @@ app.post('/api/portal/:token/verify', (req, res) => {
   const c = store.data.clients.find(c => c.portalToken === req.params.token);
   if (!c) return res.status(404).json({ error: 'Project not found' });
   const submitted = String(req.body.email || '').trim().toLowerCase();
-  if (!submitted || submitted !== (c.email || '').trim().toLowerCase()) {
+  if (!submitted || !clientEmails(c).includes(submitted)) {
     return res.status(401).json({ error: 'Email address not recognized for this project. Please double-check and try again.' });
   }
   prunePortalSessions();
@@ -1095,7 +1101,7 @@ function portalClient(req, res, { allowQuerySession = false } = {}) {
   // switching between a person's projects without re-verifying each one.
   const ok = session && session.expires >= Date.now() && (
     session.portalToken === req.params.token ||
-    (session.email && (c.email || '').trim().toLowerCase() === session.email && portalEligible(c))
+    (session.email && clientEmails(c).includes(session.email) && portalEligible(c))
   );
   if (!ok) { res.status(401).json({ error: 'verify' }); return null; }
   return c;
