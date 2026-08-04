@@ -106,7 +106,8 @@ function publicClientView(c, { readOnly = false } = {}) {
   const quote = store.quoteTotal(c);
   // Client-facing Pool Specs overview (sizes only — never any pricing), mirroring
   // the admin Overview tab's size summary.
-  const _pb = (c.specs && c.specs.poolBase) || {}, _spa = (c.specs && c.specs.spaBase) || {}, _fl = (c.specs && c.specs.fireLounge) || {};
+  const _s = c.specs || {}, _pb = _s.poolBase || {}, _spa = _s.spaBase || {}, _fl = _s.fireLounge || {};
+  const _wf = _s.waterFeature || {}, _cp = _s.coldPlunge || {}, _ff = _s.fireFeature || {};
   const _ss = _pb.sunShelf || {}, _sp = _pb.spillover || {}, _lg = _pb.ledgeSeating || {};
   const specsSummary = [];
   specsSummary.push(['Shape', _pb.shape === 'freeform' ? ('Freeform' + (_pb.freeform ? ' — ' + _pb.freeform : '')) : 'Geometric']);
@@ -117,6 +118,9 @@ function publicClientView(c, { readOnly = false } = {}) {
   if (_fl.included && _fl.size) specsSummary.push(['Fire Lounge Size', _fl.size]);
   if (_sp.included) specsSummary.push(['Spillover', _sp.details || 'Included']);
   if (_lg.included) specsSummary.push(['Ledge / Seating', _lg.details || 'Included']);
+  if (_wf.included) specsSummary.push(['Water Feature', _wf.details || 'Included']);
+  if (_cp.included) specsSummary.push(['Cold Plunge', _cp.details || 'Included']);
+  if (_ff.included) specsSummary.push(['Fire Feature', _ff.details || 'Included']);
   return {
     specsSummary,
     name: c.name, address: c.address,

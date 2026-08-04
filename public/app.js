@@ -1178,16 +1178,20 @@ function tOverview(c) {
   // Size summary pulled from Pool Specs — the dimensioned fields, shown read-only
   // on the Pool card (edit them on the Pool Specs tab).
   const sp = c.specs || {}, pb = sp.poolBase || {}, spa = sp.spaBase || {}, fl = sp.fireLounge || {};
+  const wf = sp.waterFeature || {}, cp = sp.coldPlunge || {}, ff = sp.fireFeature || {};
+  const ssf = pb.sunShelf || {}, spf = pb.spillover || {}, lgf = pb.ledgeSeating || {};
   const sizeRows = [];
   sizeRows.push(['Shape', pb.shape === 'freeform' ? ('Freeform' + (pb.freeform ? ' — ' + pb.freeform : '')) : 'Geometric']);
   if (pb.size) sizeRows.push(['Pool size', pb.size]);
   if (pb.depth) sizeRows.push(['Depth', pb.depth]);
+  if (ssf.included) sizeRows.push(['Sun Shelf', ssf.details || 'Included']);
   if (spa.included && spa.size) sizeRows.push(['Spa size', spa.size]);
   if (fl.included && fl.size) sizeRows.push(['Fire Lounge size', fl.size]);
-  const ssf = pb.sunShelf || {}, spf = pb.spillover || {}, lgf = pb.ledgeSeating || {};
-  if (ssf.included && ssf.details) sizeRows.push(['Sun Shelf', ssf.details]);
-  if (spf.included && spf.details) sizeRows.push(['Spillover', spf.details]);
-  if (lgf.included && lgf.details) sizeRows.push(['Ledge / Seating', lgf.details]);
+  if (spf.included) sizeRows.push(['Spillover', spf.details || 'Included']);
+  if (lgf.included) sizeRows.push(['Ledge / Seating', lgf.details || 'Included']);
+  if (wf.included) sizeRows.push(['Water Feature', wf.details || 'Included']);
+  if (cp.included) sizeRows.push(['Cold Plunge', cp.details || 'Included']);
+  if (ff.included) sizeRows.push(['Fire Feature', ff.details || 'Included']);
   const hasDims = !!(pb.size || pb.depth || (spa.included && spa.size) || (fl.included && fl.size));
   const sizeSummary = `
     <div style="margin-top:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px;max-width:520px">
