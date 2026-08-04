@@ -164,15 +164,16 @@ function publicClientView(c, { readOnly = false } = {}) {
       status: co.status || 'pending', createdAt: co.createdAt, approvedAt: co.approvedAt || null,
       paymentLink: co.qbPayLink || null, paymentReceivedAt: co.paymentReceivedAt || null,
     })),
-    // Files the client can see — only after they've accepted (signed). Pool
-    // Renderings show automatically; other files appear only if flagged visible.
+    // Pool Renderings show on the portal at any time (design images to share with
+    // the client). Other shared files appear only after they've accepted (signed).
     ...(() => {
       const isImg = n => /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(n || '');
-      const files = c.contract.signedAt ? (c.files || []) : [];
+      const allFiles = c.files || [];
+      const sharedSource = c.contract.signedAt ? allFiles : [];
       const meta = f => ({ id: f.id, name: f.originalName, category: f.category, isImage: isImg(f.originalName) });
       return {
-        renderings: files.filter(f => f.category === 'Pool Renderings').map(meta),
-        sharedFiles: files.filter(f => f.clientVisible && f.category !== 'Pool Renderings' && f.category !== 'Signed Contract').map(meta),
+        renderings: allFiles.filter(f => f.category === 'Pool Renderings').map(meta),
+        sharedFiles: sharedSource.filter(f => f.clientVisible && f.category !== 'Pool Renderings' && f.category !== 'Signed Contract').map(meta),
       };
     })(),
     contractSigned: !!c.contract.signedAt,
@@ -1157,12 +1158,14 @@ function portalClient(req, res, { allowQuerySession = false } = {}) {
   return c;
 }
 
-// Client downloads/views a file we've shared with them (renderings, or files
-// flagged clientVisible) — only after they've accepted (signed).
+// Client downloads/views a file we've shared with them. Pool Renderings are
+// viewable any time; other clientVisible files only after they've signed.
 app.get('/api/portal/:token/files/:fileId', (req, res) => {
   const c = portalClient(req, res, { allowQuerySession: true }); if (!c) return;
   const f = (c.files || []).find(f => f.id === req.params.fileId);
-  const allowed = f && c.contract.signedAt && (f.category === 'Pool Renderings' || f.clientVisible) && f.category !== 'Signed Contract';
+  const allowed = f && f.category !== 'Signed Contract' && (
+    f.category === 'Pool Renderings' || (c.contract.signedAt && f.clientVisible)
+  );
   if (!allowed) return res.status(404).json({ error: 'File not available' });
   const p = path.join(UPLOADS_DIR, c.id, f.storedName);
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'File not found' });
