@@ -128,6 +128,10 @@ function publicClientView(c, { readOnly = false } = {}) {
       const f = store.data.finishes.find(f => f.name === name || (f.brand + ' ' + f.name) === name);
       return f ? { name: f.name, brand: f.brand, image: f.localImage || f.imageUrl, color: f.color, tier: f.tier } : { name };
     }),
+    // Waterline tile & coping — the same values shown on the Design tab, so the
+    // client can share their preferences and the team sees them in one place.
+    waterlineTile: c.contract.waterlineTile || '',
+    coping: c.contract.coping || '',
     // Active Pebble finishes the client can choose from on the portal (no pricing).
     finishCatalog: (store.data.finishes || []).filter(f => f.active).map(f => ({
       name: f.name, brand: f.brand, tier: f.tier,
@@ -1237,7 +1241,8 @@ app.post('/api/portal/:token/change-orders/:coId/decline', (req, res) => {
 // the admin can still adjust it on the Design tab.
 app.post('/api/portal/:token/select-finish', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
-  if (!requirePrimary(req, res)) return;
+  // Interior finish is selectable by anyone with the link (including the view-only
+  // share) — it's a design preference, not a binding/contractual action.
   const name = String(req.body.name || '').trim();
   const isChange = !!req.body.isChange;
   const match = store.data.finishes.find(f => f.active && f.name === name);
@@ -1253,7 +1258,22 @@ app.post('/api/portal/:token/select-finish', (req, res) => {
     store.addAlert(`${c.address}: client confirmed interior finish "${match.brand} ${match.name}"${tierNote} on the portal.`, { clientId: c.id, type: 'info' });
   }
   store.save();
-  res.json(publicClientView(c));
+  res.json(publicClientView(c, { readOnly: req.portalReadOnly }));
+});
+
+// Client shares their Waterline Tile and Coping preferences from the portal.
+// These write the same fields the team manages on the Design → Project Selections
+// tab (single source of truth), and are open to the view-only share too.
+app.post('/api/portal/:token/design-selections', (req, res) => {
+  const c = portalClient(req, res); if (!c) return;
+  const changed = [];
+  if (req.body.waterlineTile !== undefined) { c.contract.waterlineTile = String(req.body.waterlineTile).trim(); changed.push('waterline tile'); }
+  if (req.body.coping !== undefined) { c.contract.coping = String(req.body.coping).trim(); changed.push('coping'); }
+  if (changed.length) {
+    store.addAlert(`${c.address}: client updated ${changed.join(' & ')} note(s) on the portal — see the Design tab.`, { clientId: c.id, type: 'info' });
+    store.save();
+  }
+  res.json(publicClientView(c, { readOnly: req.portalReadOnly }));
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));

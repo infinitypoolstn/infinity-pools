@@ -723,6 +723,7 @@ function tDesign(c) {
         <label class="fld grow">Waterline Tile<input type="text" id="selTile" value="${esc(c.contract.waterlineTile || '')}" placeholder="e.g. 4×4 glass mosaic — blue blend"></label>
         <label class="fld grow">Coping<input type="text" id="selCoping" value="${esc(c.contract.coping || '')}" placeholder="e.g. brushed travertine"></label>
       </div>
+      <p class="muted" style="margin:-4px 0 10px;font-size:12px">🔄 Waterline Tile &amp; Coping sync with the client portal — the client (and anyone with the view-only link) can share their preferences here from their page.</p>
       <button class="btn" onclick="saveSelections('${c.id}')">💾 Save Selections</button>
     </div>
     <div class="banner info">Click swatches to record the client's finish selections (these appear on the contract and the portal; the client can also choose their own finish from the portal). Grouped by pricing tier — prices are never shown to the client.</div>

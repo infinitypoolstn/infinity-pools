@@ -280,24 +280,8 @@ function finishSection(d) {
   if (!d.finishCatalog || !d.finishCatalog.length) return '';
   const sel = (d.selectedFinishes || [])[0] || null;
 
-  // Read-only (view link / additional contact): show the chosen finish, no picker.
-  if (d.readOnly) {
-    if (!sel) return `<div class="card"><h2>Interior Finish</h2><p class="muted">The interior finish will be selected by the main contact.</p></div>`;
-    const cat = d.finishCatalog.find(x => x.name === sel.name) || {};
-    const up = isUpgradeTier(sel.tier || cat.tier);
-    return `
-    <div class="card">
-      <h2>Interior Finish</h2>
-      <div class="fin-grid" style="grid-template-columns:minmax(0,220px)">
-        <div class="fin sel">
-          ${sel.image ? `<img src="${esc(sel.image)}" alt="${esc(sel.name)}">` : `<div class="cb" style="background:${esc(sel.color || '#8fb8d4')}"></div>`}
-          <div class="nm">✓ ${esc(sel.name)}${up ? ' *' : ''}<small>${esc(sel.brand || '')}</small></div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  // Confirmed + collapsed view.
+  // Confirmed + collapsed view. (Interior finish is selectable by everyone,
+  // including the view-only share — it's a design preference, not a binding action.)
   if (sel && !finishChanging) {
     const cat = d.finishCatalog.find(x => x.name === sel.name) || {};
     const up = isUpgradeTier(sel.tier || cat.tier);
@@ -417,6 +401,34 @@ async function changeOrderAction(coId, action) {
 window.coApprove = function (coId) {
   if (!confirm('Approve this change order? This authorizes the additional work; for a charge, we\'ll send your invoice and payment request.')) return;
   changeOrderAction(coId, 'approve');
+};
+// Waterline Tile & Coping preferences — writes the same fields the team sees on
+// the Design → Project Selections tab. Open to everyone (incl. the view link).
+function tileCopingSection(d) {
+  const ta = (id, val, ph) => `<textarea id="${id}" placeholder="${ph}" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccd6df;border-radius:8px;font:inherit;min-height:52px;resize:vertical;margin:2px 0 12px">${esc(val || '')}</textarea>`;
+  const lbl = t => `<label style="font-weight:600;font-size:13px;color:#33506b;display:block">${t}</label>`;
+  return `
+  <div class="card">
+    <h2>Waterline Tile &amp; Coping</h2>
+    <p class="pick-hint">Share your preferences below. Your team finalizes these with you during the design phase — what you enter here shows on your project's design selections.</p>
+    ${lbl('Waterline Tile')}${ta('wlTile', d.waterlineTile, 'e.g. blue glass mosaic, 1×1')}
+    ${lbl('Coping')}${ta('wlCoping', d.coping, 'e.g. brushed travertine, bullnose')}
+    <div style="display:flex;align-items:center;gap:10px"><button class="btn-approve" onclick="saveTileCoping()">Save Preferences</button><span class="pick-saving" id="tcSaving"></span></div>
+  </div>`;
+}
+window.saveTileCoping = async function () {
+  const saving = document.getElementById('tcSaving'); if (saving) saving.textContent = 'Saving…';
+  const body = { waterlineTile: document.getElementById('wlTile').value, coping: document.getElementById('wlCoping').value };
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const sid = localStorage.getItem(SESSION_KEY); if (sid) headers['x-portal-session'] = sid;
+    const res = await fetch('/api/portal/' + token + '/design-selections', { method: 'POST', headers, body: JSON.stringify(body) });
+    if (res.status === 401) { localStorage.removeItem(SESSION_KEY); showEmailGate(); return; }
+    if (!res.ok) throw new Error();
+    const y = window.scrollY;
+    renderPortal(await res.json());
+    window.scrollTo(0, y);
+  } catch (e) { if (saving) saving.textContent = 'Could not save — please try again.'; }
 };
 window.coDecline = function (coId) {
   if (!confirm('Decline this change order? We\'ll follow up with you.')) return;
@@ -597,6 +609,7 @@ function renderPortal(d) {
       <div class="col">
         ${trackerHtml}
         ${finishSection(d)}
+        ${tileCopingSection(d)}
       </div>
       <div class="col">
         ${contractHtml}
