@@ -93,6 +93,19 @@
   .rend { border:2px solid var(--soft); border-radius:12px; overflow:hidden; background:#fff; }
   .rend img { width:100%; height:160px; object-fit:cover; display:block; cursor:pointer; transition:transform .15s; }
   .rend img:hover { transform:scale(1.03); }
+  /* compact render thumbnails inside the Your Pool card */
+  .thumbs { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px; margin-top:8px; }
+  .thumbs img { width:100%; height:96px; object-fit:cover; border-radius:10px; border:2px solid var(--soft); cursor:pointer; display:block; transition:transform .15s; }
+  .thumbs img:hover { transform:scale(1.04); border-color:var(--future); }
+  /* lightbox gallery */
+  .lb { position:fixed; inset:0; background:rgba(8,24,40,.93); z-index:1000; display:flex; align-items:center; justify-content:center; }
+  .lb img { max-width:92vw; max-height:82vh; border-radius:10px; box-shadow:0 12px 60px rgba(0,0,0,.55); }
+  .lb .cap { position:absolute; bottom:18px; left:0; right:0; text-align:center; color:#fff; font-size:14px; opacity:.92; }
+  .lb .x { position:absolute; top:14px; right:20px; color:#fff; font-size:34px; line-height:1; cursor:pointer; background:none; border:none; }
+  .lb .nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,.16); color:#fff; border:none; font-size:30px; width:52px; height:52px; border-radius:50%; cursor:pointer; }
+  .lb .nav:hover { background:rgba(255,255,255,.28); }
+  .lb .prev { left:16px; } .lb .next { right:16px; }
+  @media (max-width:640px) { .lb .nav { width:44px; height:44px; font-size:26px; } .thumbs img { height:84px; } }
   details.files summary { cursor:pointer; font-weight:800; color:var(--blue-deep); font-size:17px; list-style:none; display:flex; align-items:center; gap:8px; }
   details.files summary::-webkit-details-marker { display:none; }
   details.files summary::before { content:'▸'; color:var(--blue); transition:transform .15s; }
@@ -231,6 +244,44 @@ const SESSION_KEY = 'portalSession_' + token;
 let PORTAL_D = null;        // last portal data, so handlers can re-render
 let pendingFinish = null;   // color tapped but not yet confirmed
 let finishChanging = false; // true while the client is picking a replacement
+
+// Rendering lightbox gallery state.
+let PORTAL_RENDERS = [];    // [{ url, name }] for the current project
+let galleryIdx = 0;
+window.openGallery = function (i) { galleryIdx = i; renderGallery(); };
+window.galleryNav = function (delta) {
+  if (!PORTAL_RENDERS.length) return;
+  galleryIdx = (galleryIdx + delta + PORTAL_RENDERS.length) % PORTAL_RENDERS.length;
+  renderGallery();
+};
+window.closeGallery = function () {
+  const el = document.getElementById('lightbox');
+  if (el) el.remove();
+  document.removeEventListener('keydown', galleryKey);
+};
+function galleryKey(e) {
+  if (e.key === 'Escape') closeGallery();
+  else if (e.key === 'ArrowLeft') galleryNav(-1);
+  else if (e.key === 'ArrowRight') galleryNav(1);
+}
+function renderGallery() {
+  const r = PORTAL_RENDERS[galleryIdx];
+  if (!r) return;
+  let el = document.getElementById('lightbox');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'lightbox'; el.className = 'lb';
+    el.onclick = e => { if (e.target === el) closeGallery(); };
+    document.body.appendChild(el);
+    document.addEventListener('keydown', galleryKey);
+  }
+  const multi = PORTAL_RENDERS.length > 1;
+  el.innerHTML = `
+    <button class="x" onclick="closeGallery()" aria-label="Close">×</button>
+    ${multi ? '<button class="nav prev" onclick="galleryNav(-1)" aria-label="Previous">‹</button><button class="nav next" onclick="galleryNav(1)" aria-label="Next">›</button>' : ''}
+    <img src="${r.url}" alt="${esc(r.name)}">
+    <div class="cap">${esc(r.name)}${multi ? ` · ${galleryIdx + 1} / ${PORTAL_RENDERS.length}` : ''}</div>`;
+}
 
 function showEmailGate(errorMsg) {
   document.body.innerHTML = `
@@ -467,6 +518,7 @@ function renderPortal(d) {
   const sid = localStorage.getItem(SESSION_KEY);
   const fileUrl = id => `/api/portal/${token}/files/${id}?s=${encodeURIComponent(sid)}`;
   const renderings = (d.renderings || []).filter(f => f.isImage);
+  PORTAL_RENDERS = renderings.map(f => ({ url: fileUrl(f.id), name: f.name }));
   const sharedFiles = d.sharedFiles || [];
 
   const stepCls = (p, i) => p.status === 'complete' ? 'past' : (p.status === 'active' ? 'current' : 'future');
@@ -589,15 +641,7 @@ function renderPortal(d) {
       </div>
     </div>`;
 
-  const renderingsHtml = (d.contractSigned && renderings.length) ? `
-    <div class="card">
-      <h2>🎨 Your Pool Renderings</h2>
-      <p class="muted" style="margin:-6px 0 12px">Tap any rendering to view it full size.</p>
-      <div class="rend-grid">
-        ${renderings.map(f => `<div class="rend"><a href="${fileUrl(f.id)}" target="_blank" rel="noopener"><img loading="lazy" src="${fileUrl(f.id)}" alt="${esc(f.name)}"></a></div>`).join('')}
-      </div>
-    </div>` : '';
-
+  // Renderings now live in the "Your Pool" card (thumbnails → lightbox gallery).
   const filesHtml = (d.contractSigned && sharedFiles.length) ? `
     <div class="card">
       <details class="files">
@@ -631,6 +675,12 @@ function renderPortal(d) {
       <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:14px;max-width:560px">
         ${d.specsSummary.map(([k, v]) => `<div style="color:#6b7c8a">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
       </div>
+      ${renderings.length ? `
+        <div style="margin-top:18px">
+          <div style="font-weight:800;color:var(--blue-deep);font-size:15px">🎨 Renderings</div>
+          <p class="muted" style="margin:2px 0 0">Tap a rendering to view it full size.</p>
+          <div class="thumbs">${renderings.map((f, i) => `<img loading="lazy" src="${fileUrl(f.id)}" alt="${esc(f.name)}" onclick="openGallery(${i})">`).join('')}</div>
+        </div>` : ''}
     </div>` : ''}
 
     <div class="cols">
@@ -643,7 +693,6 @@ function renderPortal(d) {
         ${contractHtml}
         ${changeOrdersHtml}
         ${phasesHtml}
-        ${renderingsHtml}
         ${filesHtml}
       </div>
     </div>
