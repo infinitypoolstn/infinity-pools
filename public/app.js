@@ -1346,9 +1346,12 @@ function tModule(c, key) {
     ${dwCard}`;
 }
 window.moduleReset = async function (id, key) {
-  if (!confirm('Reset this stage back to Not started? Details and pricing are kept.')) return;
-  try { await api('POST', `/api/clients/${id}/modules/${key}/reset`, {}); await reload(); route(); toast(MODULE_META[key].label + ' stage reset'); }
-  catch (e) { toast(e.message, true); }
+  if (!confirm('Reset this stage back to Not started? Its auto-generated tasks are removed; details and pricing are kept.')) return;
+  try {
+    const r = await api('POST', `/api/clients/${id}/modules/${key}/reset`, {});
+    await reload(); route();
+    toast(MODULE_META[key].label + ' stage reset' + (r.removed ? ` · ${r.removed} task(s) removed` : ''));
+  } catch (e) { toast(e.message, true); }
 };
 window.dwLoadJobs = async function () {
   const sel = document.getElementById('dwJobSelect'); if (!sel) return;

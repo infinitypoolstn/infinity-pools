@@ -385,10 +385,13 @@ app.post('/api/clients/:id/modules/:module/reset', (req, res) => {
   m.status = 'pending';
   m.startedAt = null;
   m.completedAt = null;
+  // No tasks should exist for a stage that hasn't started — remove the ones this
+  // stage auto-generated so a reset truly returns it to Not started.
+  const removed = alerts.clearModuleTasks(c, key);
   const label = key === 'siteExcavation' ? 'Site Excavation' : 'Landscaping';
-  store.addAlert(`${c.address}: ${label} stage reset to Not started`, { clientId: c.id, type: 'info' });
+  store.addAlert(`${c.address}: ${label} stage reset to Not started${removed ? ` (${removed} auto task(s) removed)` : ''}`, { clientId: c.id, type: 'info' });
   store.save();
-  res.json({ client: c });
+  res.json({ client: c, removed });
 });
 
 // ---------------------------------------------------------------------------
