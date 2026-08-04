@@ -104,7 +104,21 @@ function siblingProjects(c) {
 // contacts: they see everything but can't sign or make binding decisions.
 function publicClientView(c, { readOnly = false } = {}) {
   const quote = store.quoteTotal(c);
+  // Client-facing Pool Specs overview (sizes only — never any pricing), mirroring
+  // the admin Overview tab's size summary.
+  const _pb = (c.specs && c.specs.poolBase) || {}, _spa = (c.specs && c.specs.spaBase) || {}, _fl = (c.specs && c.specs.fireLounge) || {};
+  const specsSummary = [];
+  specsSummary.push(['Shape', _pb.shape === 'freeform' ? ('Freeform' + (_pb.freeform ? ' — ' + _pb.freeform : '')) : 'Geometric']);
+  if (_pb.size) specsSummary.push(['Pool Size', _pb.size]);
+  if (_pb.depth) specsSummary.push(['Depth', _pb.depth]);
+  if (_spa.included && _spa.size) specsSummary.push(['Spa Size', _spa.size]);
+  if (_fl.included && _fl.size) specsSummary.push(['Fire Lounge Size', _fl.size]);
+  const _ss = _pb.sunShelf || {}, _sp = _pb.spillover || {}, _lg = _pb.ledgeSeating || {};
+  if (_ss.included) specsSummary.push(['Sun Shelf', _ss.details || 'Included']);
+  if (_sp.included) specsSummary.push(['Spillover', _sp.details || 'Included']);
+  if (_lg.included) specsSummary.push(['Ledge / Seating', _lg.details || 'Included']);
   return {
+    specsSummary,
     name: c.name, address: c.address,
     status: c.status,
     readOnly: !!readOnly,

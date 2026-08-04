@@ -327,8 +327,11 @@ function finishSection(d) {
       ${pending ? `<p class="pick-hint" style="color:var(--blue);font-weight:700">Selected: ${esc(pending)} — tap Confirm Selection to lock it in.</p>` : ''}
       ${confirmBar('4px')}
       <div class="pick-saving" id="pickSaving"></div>
-      ${groups}
-      ${confirmBar('14px')}
+      <details ${pending ? '' : 'open'} style="margin-top:10px">
+        <summary style="cursor:pointer;font-weight:700;color:var(--blue);padding:4px 0">${pending ? 'Change color — browse all options' : 'Browse Pebble Tec colors'}</summary>
+        ${groups}
+        ${confirmBar('14px')}
+      </details>
     </div>`;
 }
 // Switch to another of the client's projects. Their verified session works for
@@ -605,11 +608,19 @@ function renderPortal(d) {
 
     ${d.clientTodos.length ? `<div class="todo"><b>⚠️ Action needed from you:</b><ul>${d.clientTodos.map(t => '<li>' + esc(t.text) + '</li>').join('')}</ul></div>` : ''}
 
+    ${(d.specsSummary && d.specsSummary.length) ? `
+    <div class="card">
+      <h2>🏊 Your Pool</h2>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:14px;max-width:560px">
+        ${d.specsSummary.map(([k, v]) => `<div style="color:#6b7c8a">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
+      </div>
+    </div>` : ''}
+
     <div class="cols">
       <div class="col">
         ${trackerHtml}
-        ${finishSection(d)}
         ${tileCopingSection(d)}
+        ${finishSection(d)}
       </div>
       <div class="col">
         ${contractHtml}
