@@ -675,6 +675,7 @@ function renderPortal(d) {
       <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:14px;max-width:560px">
         ${d.specsSummary.map(([k, v]) => `<div style="color:#6b7c8a">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
       </div>
+      <p class="muted" style="margin:10px 0 0">📏 All measurements are water to water.</p>
       ${renderings.length ? `
         <div style="margin-top:18px">
           <div style="font-weight:800;color:var(--blue-deep);font-size:15px">🎨 Renderings</div>
