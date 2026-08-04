@@ -12,10 +12,26 @@
   }
   * { box-sizing:border-box; }
   body { margin:0; font-family:"Segoe UI",system-ui,Arial,sans-serif; background:linear-gradient(180deg,#eaf4fc 0%,#f6fafd 300px); color:var(--ink); }
-  .wrap { max-width:1080px; margin:0 auto; padding:20px 16px 60px; }
-  .cols { display:flex; gap:18px; align-items:flex-start; }
+  .wrap { max-width:1320px; margin:0 auto; padding:20px 22px 60px; }
+  .cols { display:flex; gap:22px; align-items:flex-start; }
   .cols .col { flex:1; min-width:0; }
   @media (max-width:840px) { .cols { flex-direction:column; gap:0; } }
+  /* Simplify / tighten on phones so the page is easy to scan. */
+  @media (max-width:640px) {
+    .wrap { padding:12px 12px 44px; }
+    .card { padding:16px; border-radius:12px; margin-top:12px; }
+    header { padding:18px 18px; border-radius:12px; }
+    header h1 { font-size:21px; }
+    header .brand { font-size:16px; letter-spacing:2px; }
+    h2 { font-size:17px; margin-bottom:10px; }
+    .step .dot { width:27px; height:27px; font-size:12px; }
+    .step .bar { top:13px; }
+    .step .lbl { font-size:9.5px; }
+    .step.current .lbl { font-size:10px; }
+    .due-banner { padding:14px; gap:10px; }
+    .due-banner .amt { font-size:22px; }
+    .fin-grid { grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:9px; }
+  }
   .proj-switch { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
   .proj-switch .lbl { font-size:13px; color:var(--mid); font-weight:700; }
   .proj-switch .proj { border:1.5px solid var(--soft); background:#fff; color:var(--blue-dark); border-radius:999px; padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
@@ -414,6 +430,7 @@ function tileCopingSection(d) {
   <div class="card">
     <h2>Waterline Tile &amp; Coping</h2>
     <p class="pick-hint">Share your preferences below. Your team finalizes these with you during the design phase — what you enter here shows on your project's design selections.</p>
+    <p class="pick-hint" style="background:var(--pale);border-radius:8px;padding:9px 12px">💡 Your project includes an allotment of <b>$15 per linear foot</b> for waterline tile and <b>$15 per linear foot</b> for coping. Selections above the allotment may carry an additional charge.</p>
     ${lbl('Waterline Tile')}${ta('wlTile', d.waterlineTile, 'e.g. blue glass mosaic, 1×1')}
     ${lbl('Coping')}${ta('wlCoping', d.coping, 'e.g. brushed travertine, bullnose')}
     <div style="display:flex;align-items:center;gap:10px"><button class="btn-approve" onclick="saveTileCoping()">Save Preferences</button><span class="pick-saving" id="tcSaving"></span></div>
