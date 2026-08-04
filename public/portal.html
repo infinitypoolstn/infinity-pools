@@ -672,16 +672,20 @@ function renderPortal(d) {
     ${(d.specsSummary && d.specsSummary.length) ? `
     <div class="card">
       <h2>🏊 Your Pool</h2>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:14px;max-width:560px">
-        ${d.specsSummary.map(([k, v]) => `<div style="color:#6b7c8a">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
-      </div>
-      <p class="muted" style="margin:10px 0 0">📏 All measurements are water to water.</p>
-      ${renderings.length ? `
-        <div style="margin-top:18px">
+      <div style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:14px">
+            ${d.specsSummary.map(([k, v]) => `<div style="color:#6b7c8a">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
+          </div>
+          <p class="muted" style="margin:10px 0 0">📏 All measurements are water to water.</p>
+        </div>
+        ${renderings.length ? `
+        <div style="flex:1.3;min-width:240px">
           <div style="font-weight:800;color:var(--blue-deep);font-size:15px">🎨 Renderings</div>
           <p class="muted" style="margin:2px 0 0">Tap a rendering to view it full size.</p>
           <div class="thumbs">${renderings.map((f, i) => `<img loading="lazy" src="${fileUrl(f.id)}" alt="${esc(f.name)}" onclick="openGallery(${i})">`).join('')}</div>
         </div>` : ''}
+      </div>
     </div>` : ''}
 
     <div class="cols">
