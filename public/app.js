@@ -61,7 +61,7 @@ async function route() {
   badge.style.display = unread ? '' : 'none';
   badge.textContent = unread;
   // `clients` and `employees`/`contractors` remain as aliases so older links still resolve.
-  const views = { '': vDashboard, projects: vProjects, clients: vProjects, client: () => vClient(id, tab), tasks: vTasks, contacts: vContacts, employees: vContacts, contractors: vContacts, design: vDesign, alerts: vAlerts, settings: vSettings, eula: vEula, privacy: vPrivacy };
+  const views = { '': vDashboard, projects: vProjects, clients: vProjects, client: () => vClient(id, tab), tasks: vTasks, calendar: vCalendar, contacts: vContacts, employees: vContacts, contractors: vContacts, design: vDesign, alerts: vAlerts, settings: vSettings, eula: vEula, privacy: vPrivacy };
   (views[view || ''] || vDashboard)();
 }
 window.addEventListener('hashchange', route);
@@ -1133,7 +1133,10 @@ function tTasks(c) {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <h2 style="margin:0">Tasks for ${esc(c.address)} <span class="muted" style="font-weight:500">(${open} open)</span></h2>
-        <button class="btn" onclick="addTask('${c.id}')">＋ Assign Task</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn secondary" onclick="openEvent('${c.id}')">📅 Add Event</button>
+          <button class="btn" onclick="addTask('${c.id}')">＋ Assign Task</button>
+        </div>
       </div>
       <p class="muted">Phase-workflow tasks appear here automatically when each phase starts (tagged <span class="chip phase">auto</span>). Templates are editable in <a href="#/settings">Settings</a>.</p>
       <table class="tbl"><thead><tr><th>Task</th><th>Assigned To</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>
@@ -1782,6 +1785,123 @@ window.sendPortalLink = async function (id) {
 };
 
 /* ============================== TASKS ============================== */
+/* ============================== CALENDAR ============================== */
+let calUI = { month: null, clientFilter: 'all' };
+const ymNow = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+function vCalendar() {
+  if (!calUI.month) calUI.month = ymNow();
+  const [y, m] = calUI.month.split('-').map(Number);
+  const today = new Date().toISOString().slice(0, 10);
+  const clientName = id => { const c = S.clients.find(x => x.id === id); return c ? (c.address || c.name) : ''; };
+  const empName = id => { const e = S.employees.find(x => x.id === id); return e ? e.name : ''; };
+  const pass = cid => calUI.clientFilter === 'all' || cid === calUI.clientFilter;
+  // Unified items: calendar events + open dated tasks (skip orphaned clientIds).
+  const items = [];
+  for (const ev of (S.events || [])) if (clientName(ev.clientId) && pass(ev.clientId)) items.push({ kind: 'event', id: ev.id, date: ev.date, title: ev.title, clientId: ev.clientId, employeeId: ev.employeeId, time: ev.time });
+  for (const t of (S.tasks || [])) if (t.dueDate && t.status !== 'done' && pass(t.clientId)) items.push({ kind: 'task', id: t.id, date: t.dueDate, title: t.title, clientId: t.clientId, employeeId: t.employeeId, time: '' });
+  const byDate = {};
+  for (const it of items) (byDate[it.date] = byDate[it.date] || []).push(it);
+  const overdue = items.filter(it => it.date < today).sort((a, b) => a.date.localeCompare(b.date));
+
+  const first = new Date(y, m - 1, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const monthLabel = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const chip = it => {
+    const nm = clientName(it.clientId);
+    const style = it.kind === 'event' ? 'background:#ece0f7;color:#5b2a86' : 'background:#d9edf7;color:#0a5470';
+    const click = it.kind === 'event' ? `editEvent('${it.id}')` : `location.hash='#/client/${it.clientId}/tasks'`;
+    return `<div onclick="event.stopPropagation();${click}" title="${esc(it.title)}${nm ? ' · ' + esc(nm) : ''}${it.time ? ' · ' + esc(it.time) : ''}" style="cursor:pointer;${style};border-radius:5px;padding:2px 5px;margin-top:3px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.kind === 'event' ? '🗓' : '✅'} ${it.time ? esc(it.time) + ' ' : ''}${esc(it.title)}${nm ? ` · ${esc(nm)}` : ''}</div>`;
+  };
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += '<div style="background:var(--blue-pale);border-radius:8px"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = calUI.month + '-' + String(d).padStart(2, '0');
+    const dayItems = (byDate[ds] || []).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const isToday = ds === today;
+    cells += `<div onclick="openEvent('', '${ds}')" title="Add event on ${ds}" style="cursor:pointer;min-height:96px;border:1px solid ${isToday ? 'var(--blue-mid)' : 'var(--blue-soft)'};background:${isToday ? 'var(--blue-soft)' : '#fff'};border-radius:8px;padding:5px">
+      <div style="font-weight:700;font-size:12px;color:${isToday ? 'var(--blue-dark)' : 'var(--mid)'}">${d}</div>
+      ${dayItems.map(chip).join('')}
+    </div>`;
+  }
+  $('#main').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <h1 style="margin:0">📅 Calendar</h1>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="input" onchange="calSetFilter(this.value)" style="max-width:220px"><option value="all">All projects</option>${S.clients.map(c => `<option value="${c.id}" ${calUI.clientFilter === c.id ? 'selected' : ''}>${esc(c.address || c.name)}</option>`).join('')}</select>
+        <button class="btn" onclick="openEvent()">＋ Add Event</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <button class="btn secondary small" onclick="calNav(-1)">◀</button>
+        <h2 style="margin:0">${monthLabel}</h2>
+        <div style="display:flex;gap:8px"><button class="btn secondary small" onclick="calToday()">Today</button><button class="btn secondary small" onclick="calNav(1)">▶</button></div>
+      </div>
+      <p class="muted" style="margin:0 0 8px;font-size:12px"><span style="background:#ece0f7;color:#5b2a86;border-radius:4px;padding:1px 6px">🗓 Event</span> &nbsp; <span style="background:#d9edf7;color:#0a5470;border-radius:4px;padding:1px 6px">✅ Task</span> &nbsp; Click a day to add an event; click a task to open its project.</p>
+      ${overdue.length ? `<div class="banner" style="background:#fdecea;border:1px solid #f5c6c2;color:#8a1c13;margin-bottom:10px"><b>⚠ Overdue (${overdue.length}):</b> ${overdue.slice(0, 8).map(it => `${it.kind === 'event' ? '🗓' : '✅'} ${esc(it.title)}${clientName(it.clientId) ? ' — ' + esc(clientName(it.clientId)) : ''} (${fmtDate(it.date)})`).join(' · ')}${overdue.length > 8 ? ' …' : ''}</div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+        ${dow.map(d => `<div style="text-align:center;font-weight:700;font-size:12px;color:var(--mid);padding:2px 0">${d}</div>`).join('')}
+        ${cells}
+      </div>
+    </div>`;
+}
+window.calNav = function (delta) {
+  let [y, m] = calUI.month.split('-').map(Number);
+  m += delta; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+  calUI.month = y + '-' + String(m).padStart(2, '0'); vCalendar();
+};
+window.calToday = function () { calUI.month = ymNow(); vCalendar(); };
+window.calSetFilter = function (v) { calUI.clientFilter = v; vCalendar(); };
+window.openEvent = function (preClient, preDate) { eventModal({ clientId: preClient || (calUI.clientFilter !== 'all' ? calUI.clientFilter : ''), date: preDate || '' }); };
+window.editEvent = function (id) { const ev = (S.events || []).find(e => e.id === id); if (ev) eventModal(ev); };
+function eventModal(ev) {
+  ev = ev || {};
+  modal(`<h2>${ev.id ? 'Edit' : 'Add'} Event</h2>
+    <label class="fld">Title<input type="text" id="evTitle" value="${esc(ev.title || '')}" placeholder="e.g. Final inspection"></label>
+    <label class="fld">Details<textarea id="evDetails">${esc(ev.details || '')}</textarea></label>
+    <label class="fld">Project<select id="evClient"><option value="">— choose project —</option>${S.clients.map(c => `<option value="${c.id}" ${c.id === ev.clientId ? 'selected' : ''}>${esc(c.address || c.name)}</option>`).join('')}</select></label>
+    <label class="fld">Assign to (optional)<select id="evEmp"><option value="">— unassigned —</option>${S.employees.map(e => `<option value="${e.id}" ${e.id === ev.employeeId ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select></label>
+    <div class="row">
+      <label class="fld grow">Date<input type="date" id="evDate" value="${esc(ev.date || '')}"></label>
+      <label class="fld" style="max-width:150px">Time (optional)<input type="time" id="evTime" value="${esc(ev.time || '')}"></label>
+    </div>
+    <p class="muted" style="font-size:12px;margin:0 0 8px">Reminders go to the assignee and the admin email the day before and the morning of the date.</p>
+    <div style="display:flex;gap:10px;justify-content:${ev.id ? 'space-between' : 'flex-end'};margin-top:6px">
+      ${ev.id ? `<button class="btn danger" onclick="delEvent('${ev.id}')">Delete</button>` : ''}
+      <div style="display:flex;gap:10px"><button class="btn secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="saveEvent('${ev.id || ''}')">${ev.id ? 'Save' : 'Add Event'}</button></div>
+    </div>`);
+}
+window.saveEvent = async function (id) {
+  const title = $('#evTitle').value.trim();
+  const clientId = $('#evClient').value;
+  const date = $('#evDate').value;
+  if (!title) return toast('Event title required', true);
+  if (!clientId) return toast('Choose a project', true);
+  if (!date) return toast('Choose a date', true);
+  const existing = id ? (S.events || []).find(e => e.id === id) : null;
+  // Reset reminders when the date moves (or for new events) so the new date re-triggers.
+  const remindersSent = (existing && existing.date === date && existing.remindersSent) || { dayBefore: null, morningOf: null };
+  const body = {
+    title, details: $('#evDetails').value.trim(), clientId,
+    employeeId: $('#evEmp').value || '', date, time: $('#evTime').value || '',
+    remindersSent, createdAt: (existing && existing.createdAt) || new Date().toISOString(),
+  };
+  try {
+    if (id) await api('PUT', '/api/events/' + id, body);
+    else await api('POST', '/api/events', body);
+    await reload(); closeModal(); route(); toast('Event saved');
+  } catch (e) { toast(e.message, true); }
+};
+window.delEvent = async function (id) {
+  if (!confirm('Delete this event?')) return;
+  try { await api('DELETE', '/api/events/' + id); await reload(); closeModal(); route(); toast('Event deleted'); }
+  catch (e) { toast(e.message, true); }
+};
+
 function vTasks() {
   const today = new Date().toISOString().slice(0, 10);
   $('#main').innerHTML = `

@@ -182,6 +182,7 @@ app.get('/api/bootstrap', (req, res) => {
     employees: d.employees,
     contractors: d.contractors,
     tasks: d.tasks,
+    events: d.events,
     alerts: d.alerts.slice(0, 100),
     finishes: d.finishes,
     pebbleCheck: d.pebbleCheck,
@@ -952,6 +953,14 @@ function crud(name) {
 crud('employees');
 crud('contractors');
 crud('tasks');
+crud('events');
+
+// Manually run the day-before / morning-of schedule reminders (also runs nightly
+// via cron). Handy for testing and a "Run reminders now" button.
+app.post('/api/schedule-reminders/run', wrap(async (req, res) => {
+  const result = await alerts.sendScheduleReminders();
+  res.json(result);
+}));
 
 app.post('/api/tasks/:id/remind', wrap(async (req, res) => {
   const t = store.data.tasks.find(t => t.id === req.params.id);
@@ -1206,8 +1215,12 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 // ---------------------------------------------------------------------------
 // Monday 7:00 AM Central — Pebble Tec accuracy check (emails on differences)
 cron.schedule('0 7 * * 1', () => pebble.run({ sendEmail: true }).catch(console.error), { timezone: 'America/Chicago' });
-// Every day 7:00 AM Central — due-date digest for phases and tasks
-cron.schedule('0 7 * * *', () => alerts.dailyDigest().catch(console.error), { timezone: 'America/Chicago' });
+// Every day 7:00 AM Central — due-date digest for phases and tasks, then the
+// day-before / morning-of reminders for scheduled events and dated tasks.
+cron.schedule('0 7 * * *', () => {
+  alerts.dailyDigest().catch(console.error);
+  alerts.sendScheduleReminders().catch(console.error);
+}, { timezone: 'America/Chicago' });
 
 app.listen(PORT, () => {
   console.log(`\n  Infinity Pools is running →  http://localhost:${PORT}\n`);
