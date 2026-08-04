@@ -100,11 +100,14 @@ function siblingProjects(c) {
 }
 
 // Strip internal-only data before anything client-facing is built from a record.
-function publicClientView(c) {
+// readOnly = true for the shareable view link and for non-primary (additional)
+// contacts: they see everything but can't sign or make binding decisions.
+function publicClientView(c, { readOnly = false } = {}) {
   const quote = store.quoteTotal(c);
   return {
     name: c.name, address: c.address,
     status: c.status,
+    readOnly: !!readOnly,
     // Every project this client (same email) can open on the portal — powers the
     // "switch project" menu when they have more than one.
     otherProjects: siblingProjects(c),
@@ -156,8 +159,9 @@ function publicClientView(c) {
     // The client can always view their contract PDF once it exists (sent, ready
     // to sign, or signed).
     contractViewable: !!(c.contract.sentAt || c.contract.signedAt || c.contract.docusealStatus === 'pending'),
-    // Embedded DocuSeal signing form, shown while a submission is pending.
-    signing: (!c.contract.signedAt && c.contract.docusealEmbedSrc && c.contract.docusealStatus === 'pending')
+    // Embedded DocuSeal signing form, shown while a submission is pending — only
+    // to the primary contact (never on the view link / to additional contacts).
+    signing: (!readOnly && !c.contract.signedAt && c.contract.docusealEmbedSrc && c.contract.docusealStatus === 'pending')
       ? { provider: 'docuseal', src: c.contract.docusealEmbedSrc }
       : null,
     quoteTotal: quote,
@@ -1059,6 +1063,15 @@ app.post('/api/clients/:id/portal/send-link', wrap(async (req, res) => {
   res.json({ ok: true, recipients });
 }));
 
+// Regenerate the read-only shareable view link (revokes the old one).
+app.post('/api/clients/:id/portal/regenerate-view-link', (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  c.viewToken = store.token();
+  store.addAlert(`View-only portal link regenerated for ${c.name} — the old link no longer works.`, { clientId: c.id });
+  store.save();
+  res.json({ viewToken: c.viewToken });
+});
+
 // ---------------------------------------------------------------------------
 // Client portal — email verification sessions (in-memory, 7-day expiry)
 // ---------------------------------------------------------------------------
@@ -1069,6 +1082,11 @@ function prunePortalSessions() {
 }
 
 app.get('/portal/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'portal.html'));
+});
+// Read-only shareable link — same portal page; the front-end detects the /view/
+// path and skips the email gate (access is granted by the viewToken alone).
+app.get('/portal/view/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'portal.html'));
 });
 
@@ -1090,6 +1108,12 @@ app.post('/api/portal/:token/verify', (req, res) => {
 // Resolve the client for an authenticated portal request, or send the error and
 // return null. Requires a valid, unexpired session for this token.
 function portalClient(req, res, { allowQuerySession = false } = {}) {
+  // View-only shareable link: the viewToken alone grants read-only access — no
+  // login. Marks the request read-only so binding actions (sign, change-order
+  // approval, finish selection) are refused.
+  const viewC = store.data.clients.find(c => c.viewToken === req.params.token);
+  if (viewC) { req.portalReadOnly = true; return viewC; }
+
   const c = store.data.clients.find(c => c.portalToken === req.params.token);
   if (!c) { res.status(404).json({ error: 'Project not found' }); return null; }
   // <img>/<a> tags can't send a custom header, so file requests may pass the
@@ -1104,6 +1128,10 @@ function portalClient(req, res, { allowQuerySession = false } = {}) {
     (session.email && clientEmails(c).includes(session.email) && portalEligible(c))
   );
   if (!ok) { res.status(401).json({ error: 'verify' }); return null; }
+  // Only the project's PRIMARY contact can sign / make binding decisions. Everyone
+  // else who verified (additional emails) is read-only.
+  const primary = (c.email || '').trim().toLowerCase();
+  req.portalReadOnly = !(session.email && session.email === primary);
   return c;
 }
 
@@ -1140,9 +1168,16 @@ function recordPortalVisit(c, req) {
 
 app.get('/api/portal/:token', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
-  recordPortalVisit(c, req);
-  res.json(publicClientView(c));
+  // Only count real client visits (verified logins) — not shared view-link opens.
+  if (!req.portalReadOnly) recordPortalVisit(c, req);
+  res.json(publicClientView(c, { readOnly: req.portalReadOnly }));
 });
+
+// Refuse binding actions on a read-only session (view link or additional contact).
+function requirePrimary(req, res) {
+  if (req.portalReadOnly) { res.status(403).json({ error: 'This is a view-only link — only the main contact can take this action.' }); return false; }
+  return true;
+}
 
 // Client views their contract PDF from the portal (session-authenticated). Serves
 // the signed copy if one has been saved, otherwise the current generated contract.
@@ -1161,6 +1196,7 @@ app.get('/api/portal/:token/contract.pdf', wrap(async (req, res) => {
 // Lets signing complete even without a public webhook (a status poll).
 app.post('/api/portal/:token/contract/signed', wrap(async (req, res) => {
   const c = portalClient(req, res); if (!c) return;
+  if (!requirePrimary(req, res)) return;
   if (c.contract.signedAt) return res.json(publicClientView(c));
   if (c.contract.docusealSubmissionId && docuseal.configured(store.data.settings)) {
     try {
@@ -1175,6 +1211,7 @@ app.post('/api/portal/:token/contract/signed', wrap(async (req, res) => {
 // the invoice and sends the payment request (for a positive charge).
 app.post('/api/portal/:token/change-orders/:coId/approve', wrap(async (req, res) => {
   const c = portalClient(req, res); if (!c) return;
+  if (!requirePrimary(req, res)) return;
   const co = (c.changeOrders || []).find(co => co.id === req.params.coId);
   if (!co) return res.status(404).json({ error: 'Change order not found' });
   await approveChangeOrder(c, co);
@@ -1184,6 +1221,7 @@ app.post('/api/portal/:token/change-orders/:coId/approve', wrap(async (req, res)
 // Client declines a change order from the portal.
 app.post('/api/portal/:token/change-orders/:coId/decline', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
+  if (!requirePrimary(req, res)) return;
   const co = (c.changeOrders || []).find(co => co.id === req.params.coId);
   if (!co) return res.status(404).json({ error: 'Change order not found' });
   if (co.status !== 'approved') {
@@ -1199,6 +1237,7 @@ app.post('/api/portal/:token/change-orders/:coId/decline', (req, res) => {
 // the admin can still adjust it on the Design tab.
 app.post('/api/portal/:token/select-finish', (req, res) => {
   const c = portalClient(req, res); if (!c) return;
+  if (!requirePrimary(req, res)) return;
   const name = String(req.body.name || '').trim();
   const isChange = !!req.body.isChange;
   const match = store.data.finishes.find(f => f.active && f.name === name);

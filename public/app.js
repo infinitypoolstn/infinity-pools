@@ -1742,6 +1742,7 @@ function portalAccessHTML(c) {
 }
 function tPortal(c) {
   const url = location.origin + '/portal/' + c.portalToken;
+  const viewUrl = location.origin + '/portal/view/' + c.viewToken;
   const recipients = [...new Set([c.email, ...(c.additionalEmails || [])].map(e => (e || '').trim()).filter(Boolean))];
   $('#tabBody').innerHTML = `
     <div class="card" style="max-width:760px">
@@ -1759,6 +1760,16 @@ function tPortal(c) {
         ${recipients.length ? `Recipients: ${recipients.map(esc).join(', ')} · <a href="#" onclick="editClientInfo('${c.id}');return false;">edit</a>` : `No email on file · <a href="#" onclick="editClientInfo('${c.id}');return false;">add one</a>`}
         ${c.contract.portalLinkSentAt ? ` — last emailed ${fmtDate(c.contract.portalLinkSentAt)}` : ''}
       </p>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--blue-soft)">
+        <h3 style="margin:0 0 4px">👁 View-only share link</h3>
+        <p class="muted" style="margin:0 0 8px;font-size:13px">Share with anyone (spouse, builder, agent). Opens with no login and shows everything, but they <b>cannot sign the contract</b>, approve change orders, or change finish selections. Only the main contact signs.</p>
+        <div class="row" style="align-items:center">
+          <input class="input grow" readonly value="${viewUrl}" onclick="this.select()">
+          <button class="btn secondary" onclick="navigator.clipboard.writeText('${viewUrl}');toast('View link copied')">Copy</button>
+          <a class="btn secondary" href="${viewUrl}" target="_blank">Open</a>
+          <button class="btn secondary" onclick="regenViewLink('${c.id}')" title="Invalidate the old link and create a new one">↻ Regenerate</button>
+        </div>
+      </div>
       ${portalAccessHTML(c)}
       <h3>Client To-Do Items (shown as alerts on their page)</h3>
       <div id="todoList">${(c.clientTodos || []).map(t => `
@@ -1785,6 +1796,11 @@ window.todoSave = async function (id) {
   })).filter(t => t.text.trim());
   await api('PUT', '/api/clients/' + id, { clientTodos: todos });
   await reload(); toast('Saved'); route();
+};
+window.regenViewLink = async function (id) {
+  if (!confirm('Regenerate the view-only link? The current link will stop working immediately.')) return;
+  try { await api('POST', `/api/clients/${id}/portal/regenerate-view-link`); await reload(); route(); toast('View link regenerated — old link revoked'); }
+  catch (e) { toast(e.message, true); }
 };
 window.sendPortalLink = async function (id) {
   try {

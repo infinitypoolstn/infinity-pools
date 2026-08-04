@@ -206,7 +206,9 @@ function poolSvg(stage, finishColor) {
 
 const ICONS = ['📐','🚧','🚜','🔩','🏗️','🎨','🏊'];
 
-const token = location.pathname.split('/').pop();
+const _pathParts = location.pathname.split('/').filter(Boolean); // ['portal','view','TOKEN'] or ['portal','TOKEN']
+const isViewLink = _pathParts[1] === 'view';   // read-only shareable link — no login
+const token = _pathParts[_pathParts.length - 1];
 const SESSION_KEY = 'portalSession_' + token;
 
 // Interior-finish selection UI state (persists across re-renders):
@@ -254,7 +256,9 @@ async function loadPortal(sessionId) {
   document.body.innerHTML = '<div class="wrap" id="wrap">Loading your project…</div>';
   let d;
   try {
-    const res = await fetch('/api/portal/' + token, { headers: { 'x-portal-session': sessionId } });
+    // View link needs no session; a verified client sends its session header.
+    const headers = sessionId ? { 'x-portal-session': sessionId } : {};
+    const res = await fetch('/api/portal/' + token, { headers });
     if (res.status === 401) { localStorage.removeItem(SESSION_KEY); showEmailGate(); return; }
     if (!res.ok) throw new Error();
     d = await res.json();
@@ -275,6 +279,23 @@ const isUpgradeTier = tier => !!tier && tier !== 'Standard';
 function finishSection(d) {
   if (!d.finishCatalog || !d.finishCatalog.length) return '';
   const sel = (d.selectedFinishes || [])[0] || null;
+
+  // Read-only (view link / additional contact): show the chosen finish, no picker.
+  if (d.readOnly) {
+    if (!sel) return `<div class="card"><h2>Interior Finish</h2><p class="muted">The interior finish will be selected by the main contact.</p></div>`;
+    const cat = d.finishCatalog.find(x => x.name === sel.name) || {};
+    const up = isUpgradeTier(sel.tier || cat.tier);
+    return `
+    <div class="card">
+      <h2>Interior Finish</h2>
+      <div class="fin-grid" style="grid-template-columns:minmax(0,220px)">
+        <div class="fin sel">
+          ${sel.image ? `<img src="${esc(sel.image)}" alt="${esc(sel.name)}">` : `<div class="cb" style="background:${esc(sel.color || '#8fb8d4')}"></div>`}
+          <div class="nm">✓ ${esc(sel.name)}${up ? ' *' : ''}<small>${esc(sel.brand || '')}</small></div>
+        </div>
+      </div>
+    </div>`;
+  }
 
   // Confirmed + collapsed view.
   if (sel && !finishChanging) {
@@ -472,7 +493,9 @@ function renderPortal(d) {
         ? `<div class="banner-ok">✓ Signed${d.contractSignedAt ? ' on ' + fmtDate(d.contractSignedAt) : ''} — thank you!</div>`
         : d.signing
           ? `<p class="muted">Please review your contract below and sign securely. Once you sign, your project moves into the Design phase and we'll get started.</p>`
-          : `<p class="muted">Your contract is ready to review. We'll let you know when it's ready to sign.</p>`}
+          : d.readOnly
+            ? `<p class="muted">You can review the contract below. Signing is done by the main contact on the project.</p>`
+            : `<p class="muted">Your contract is ready to review. We'll let you know when it's ready to sign.</p>`}
       <div style="margin:10px 0">
         <button class="viewbtn" onclick="viewContract()">📄 View My Contract (PDF)</button>
         <span class="pick-saving" id="contractStatus" style="margin-left:10px"></span>
@@ -494,11 +517,12 @@ function renderPortal(d) {
             <div class="desc">${esc(co.description)}</div>
             <div class="amt">${credit ? '−' : ''}${money(Math.abs(co.value))}${credit ? ' credit' : ''}</div>
           </div>
-          ${pending ? `
+          ${pending ? (d.readOnly ? `
+            <div style="margin-top:8px"><span class="muted">Pending the main contact's approval.</span></div>` : `
             <div class="actions">
               <button class="btn-approve" onclick="coApprove('${co.id}')">✓ Approve${co.value > 0 ? ' & Get Invoice' : ''}</button>
               <button class="btn-decline" onclick="coDecline('${co.id}')">Decline</button>
-            </div>` : `
+            </div>`) : `
             <div style="margin-top:8px">
               <span class="status-ok">✓ Approved${co.approvedAt ? ' on ' + fmtDate(co.approvedAt) : ''}</span>
               ${co.value > 0 ? (co.paymentReceivedAt ? ' · <span class="paid">✓ Paid — thank you!</span>' : co.paymentLink ? ` · <a class="paybtn" style="padding:8px 18px;font-size:13px" href="${esc(co.paymentLink)}" target="_blank" rel="noopener">Pay ${money(co.value)} →</a>` : ' · <span class="muted">Your invoice is on its way by email.</span>') : ''}
@@ -553,7 +577,8 @@ function renderPortal(d) {
     </div>` : '';
 
   $('#wrap').innerHTML = `
-    ${(d.otherProjects && d.otherProjects.length > 1) ? `
+    ${d.readOnly ? `<div class="todo" style="background:#eef3f8;border-color:#cfe0ef;color:#2b4a63"><b>👁 View-only:</b> you're viewing a shared link. You can see everything here; signing and approvals are done by the main contact on the project.</div>` : ''}
+    ${(!d.readOnly && d.otherProjects && d.otherProjects.length > 1) ? `
     <div class="proj-switch">
       <span class="lbl">Your projects:</span>
       ${d.otherProjects.map(p => p.current
@@ -601,8 +626,10 @@ function renderPortal(d) {
   }
 }
 
-// Entry point — check for existing session, otherwise show email gate
+// Entry point — the view link loads read-only with no gate; otherwise check for
+// an existing session, else show the email gate.
 (function init() {
+  if (isViewLink) { loadPortal(null); return; }
   const sessionId = localStorage.getItem(SESSION_KEY);
   if (sessionId) { loadPortal(sessionId); } else { showEmailGate(); }
 })();
