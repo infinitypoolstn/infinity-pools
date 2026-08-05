@@ -336,9 +336,10 @@ async function loadPortal(sessionId) {
   renderPortal(d);
 }
 
-// Colors above the Standard tier carry an upgrade charge (per the Brothers Pool
-// Plastering rate sheet) — marked on the portal with an asterisk.
-const isUpgradeTier = tier => !!tier && tier !== 'Standard';
+// Included in the pool price: PebbleTec & PebbleSheen in the Standard and Upgrade
+// tiers. Everything else (premium tiers, other brands) carries an upgrade charge (*).
+const isIncludedFinish = f => !!f && (f.brand === 'PebbleTec' || f.brand === 'PebbleSheen') && (f.tier === 'Standard' || f.tier === 'Upgrade');
+const isUpgradeCharge = f => !isIncludedFinish(f);
 
 // Interior finish: a confirm-then-collapse selector. Before confirming, tapping a
 // swatch just marks it; "Confirm Selection" saves it and collapses the list. Once
@@ -351,7 +352,7 @@ function finishSection(d) {
   // including the view-only share — it's a design preference, not a binding action.)
   if (sel && !finishChanging) {
     const cat = d.finishCatalog.find(x => x.name === sel.name) || {};
-    const up = isUpgradeTier(sel.tier || cat.tier);
+    const up = isUpgradeCharge({ brand: sel.brand || cat.brand, tier: sel.tier || cat.tier });
     return `
     <div class="card">
       <h2>Your Interior Finish</h2>
@@ -366,20 +367,31 @@ function finishSection(d) {
     </div>`;
   }
 
-  // Picker view (first-time, or while changing).
+  // Picker view (first-time, or while changing) — grouped by brand then tier,
+  // like the project's Design page.
   const pending = pendingFinish;
   const brands = ['PebbleTec', 'PebbleSheen', 'PebbleFina', 'PebbleBrilliance'];
+  const tierOrder = ['Standard', 'Upgrade', 'Premium', 'Extra Premium', 'Brilliance'];
   const groups = brands.map(brand => {
-    const items = d.finishCatalog.filter(f => f.brand === brand);
-    if (!items.length) return '';
-    return `<div class="brand-group"><h3>${esc(brand)}</h3><div class="fin-grid">${items.map(f => {
-      const up = isUpgradeTier(f.tier);
-      const on = pending === f.name;
-      return `<div class="fin pickable ${on ? 'sel' : ''}" data-finish="${esc(f.name)}" onclick="pickFinish(this.dataset.finish)">
-        ${f.image ? `<img loading="lazy" src="${esc(f.image)}" alt="${esc(f.name)}">` : `<div class="cb" style="background:${esc(f.color || '#8fb8d4')}"></div>`}
-        <div class="nm">${on ? '✓ ' : ''}${esc(f.name)}${up ? ' *' : ''}${f.shimmer ? ' ✨' : ''}<small>${esc(brand)}</small></div>
+    const bitems = d.finishCatalog.filter(f => f.brand === brand);
+    if (!bitems.length) return '';
+    const tiers = tierOrder.filter(t => bitems.some(f => f.tier === t));
+    return `<div class="brand-group"><h3>${esc(brand)}</h3>${tiers.map(t => {
+      const items = bitems.filter(f => f.tier === t);
+      const included = isIncludedFinish(items[0]);
+      const tierLabel = t === 'Brilliance' ? 'All Colors' : t;
+      return `<div style="margin-top:8px">
+        <h4 style="margin:6px 0 6px;font-size:13.5px">${esc(tierLabel)} ${included ? '<span style="color:var(--green);font-weight:700">· included</span>' : '<span style="color:var(--amber);font-weight:700">· upgrade charge *</span>'}</h4>
+        <div class="fin-grid">${items.map(f => {
+          const up = isUpgradeCharge(f);
+          const on = pending === f.name;
+          return `<div class="fin pickable ${on ? 'sel' : ''}" data-finish="${esc(f.name)}" onclick="pickFinish(this.dataset.finish)">
+            ${f.image ? `<img loading="lazy" src="${esc(f.image)}" alt="${esc(f.name)}">` : `<div class="cb" style="background:${esc(f.color || '#8fb8d4')}"></div>`}
+            <div class="nm">${on ? '✓ ' : ''}${esc(f.name)}${up ? ' *' : ''}${f.shimmer ? ' ✨' : ''}<small>${esc(brand)}</small></div>
+          </div>`;
+        }).join('')}</div>
       </div>`;
-    }).join('')}</div></div>`;
+    }).join('')}</div>`;
   }).join('');
   const confirmBar = mt => `
       <div style="margin:${mt} 0 0;display:flex;gap:10px;flex-wrap:wrap">
@@ -390,7 +402,8 @@ function finishSection(d) {
     <div class="card">
       <h2>Choose Your Interior Finish</h2>
       <p class="pick-hint">Tap a Pebble Tec color to choose your pool's interior finish, then tap <b>Confirm Selection</b>.</p>
-      <p class="pick-hint"><b>*</b> Colors marked with an asterisk are <b>upgrade or premium finishes</b> and carry an additional charge. Browse all colors at <a href="https://pebbletec.com/products/all-finishes/" target="_blank" rel="noopener">pebbletec.com</a>.</p>
+      <p class="pick-hint">✅ <b>PebbleTec</b> and <b>PebbleSheen</b> — <b>Standard</b> and <b>Upgrade</b> tiers — are <b>included in the price of your pool</b>.</p>
+      <p class="pick-hint"><b>*</b> Colors marked with an asterisk (premium tiers and other brands) carry an additional charge. Browse all colors at <a href="https://pebbletec.com/products/all-finishes/" target="_blank" rel="noopener">pebbletec.com</a>.</p>
       ${pending ? `<p class="pick-hint" style="color:var(--blue);font-weight:700">Selected: ${esc(pending)} — tap Confirm Selection to lock it in.</p>` : ''}
       ${confirmBar('4px')}
       <div class="pick-saving" id="pickSaving"></div>
