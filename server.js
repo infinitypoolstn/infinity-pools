@@ -1288,6 +1288,9 @@ app.post('/api/portal/:token/select-finish', (req, res) => {
   if (!match) return res.status(400).json({ error: 'Unknown finish' });
   const prior = c.selectedFinishes[0];
   c.selectedFinishes = [match.name];
+  // Reflect the client's pick as the Plaster Color on the Design tab (same field
+  // the team edits there), alongside the swatch selection.
+  c.contract.plasterColor = match.name;
   // Record that the client (not the admin) made this pick, for the Design tab.
   c.clientFinishChoice = { name: match.name, brand: match.brand, at: new Date().toISOString(), changed: isChange };
   const tierNote = (match.tier && match.tier !== 'Standard') ? ` [${match.tier} — upgrade charge]` : '';
