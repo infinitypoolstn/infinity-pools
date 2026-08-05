@@ -988,7 +988,25 @@ function crud(name) {
 crud('employees');
 crud('contractors');
 crud('tasks');
-crud('events');
+
+// Events: creating one emails an alert to the assignee + admin (editing/deleting
+// don't). Mirrors the generic crud otherwise.
+app.post('/api/events', wrap(async (req, res) => {
+  const rec = { id: store.id(), ...req.body };
+  store.data.events.push(rec);
+  store.save();
+  try { await alerts.notifyEventAdded(rec); } catch (e) { console.error('event email:', e.message); }
+  res.json(rec);
+}));
+app.put('/api/events/:id', (req, res) => {
+  const rec = store.data.events.find(r => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ error: 'Not found' });
+  Object.assign(rec, req.body, { id: rec.id }); store.save(); res.json(rec);
+});
+app.delete('/api/events/:id', (req, res) => {
+  store.data.events = store.data.events.filter(r => r.id !== req.params.id);
+  store.save(); res.json({ ok: true });
+});
 
 // Manually run the day-before / morning-of schedule reminders (also runs nightly
 // via cron). Handy for testing and a "Run reminders now" button.
