@@ -1820,6 +1820,15 @@ window.sendPortalLink = async function (id) {
 /* ============================== CALENDAR ============================== */
 let calUI = { month: null, clientFilter: 'all' };
 const ymNow = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+// Every YYYY-MM-DD from start..end inclusive (for multi-day events).
+function calDatesInRange(start, end) {
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const out = []; let d = new Date(start + 'T00:00:00'); const last = new Date((end || start) + 'T00:00:00');
+  let guard = 0;
+  while (d <= last && guard++ < 400) { out.push(fmt(d)); d.setDate(d.getDate() + 1); }
+  return out.length ? out : [start];
+}
 function vCalendar() {
   if (!calUI.month) calUI.month = ymNow();
   const [y, m] = calUI.month.split('-').map(Number);
@@ -1827,13 +1836,14 @@ function vCalendar() {
   const clientName = id => { const c = S.clients.find(x => x.id === id); return c ? (c.address || c.name) : ''; };
   const empName = id => { const e = S.employees.find(x => x.id === id); return e ? e.name : ''; };
   const pass = cid => calUI.clientFilter === 'all' || cid === calUI.clientFilter;
-  // Unified items: calendar events + open dated tasks (skip orphaned clientIds).
+  // Unified items: calendar events (excluding completed) + open dated tasks.
   const items = [];
-  for (const ev of (S.events || [])) if (clientName(ev.clientId) && pass(ev.clientId)) items.push({ kind: 'event', id: ev.id, date: ev.date, title: ev.title, clientId: ev.clientId, employeeId: ev.employeeId, time: ev.time });
-  for (const t of (S.tasks || [])) if (t.dueDate && t.status !== 'done' && pass(t.clientId)) items.push({ kind: 'task', id: t.id, date: t.dueDate, title: t.title, clientId: t.clientId, employeeId: t.employeeId, time: '' });
+  for (const ev of (S.events || [])) if (!ev.done && clientName(ev.clientId) && pass(ev.clientId)) items.push({ kind: 'event', id: ev.id, date: ev.date, endDate: ev.endDate || ev.date, title: ev.title, clientId: ev.clientId, employeeId: ev.employeeId, time: ev.time });
+  for (const t of (S.tasks || [])) if (t.dueDate && t.status !== 'done' && pass(t.clientId)) items.push({ kind: 'task', id: t.id, date: t.dueDate, endDate: t.dueDate, title: t.title, clientId: t.clientId, employeeId: t.employeeId, time: '' });
   const byDate = {};
-  for (const it of items) (byDate[it.date] = byDate[it.date] || []).push(it);
-  const overdue = items.filter(it => it.date < today).sort((a, b) => a.date.localeCompare(b.date));
+  for (const it of items) for (const ds of calDatesInRange(it.date, it.endDate)) (byDate[ds] = byDate[ds] || []).push(it);
+  // Overdue = the whole item is in the past (end date before today) and not done.
+  const overdue = items.filter(it => (it.endDate || it.date) < today).sort((a, b) => (a.endDate || a.date).localeCompare(b.endDate || b.date));
 
   const first = new Date(y, m - 1, 1);
   const startDow = first.getDay();
@@ -1873,7 +1883,16 @@ function vCalendar() {
         <div style="display:flex;gap:8px"><button class="btn secondary small" onclick="calToday()">Today</button><button class="btn secondary small" onclick="calNav(1)">▶</button></div>
       </div>
       <p class="muted" style="margin:0 0 8px;font-size:12px"><span style="background:#ece0f7;color:#5b2a86;border-radius:4px;padding:1px 6px">🗓 Event</span> &nbsp; <span style="background:#d9edf7;color:#0a5470;border-radius:4px;padding:1px 6px">✅ Task</span> &nbsp; Click a day to add an event; click a task to open its project.</p>
-      ${overdue.length ? `<div class="banner" style="background:#fdecea;border:1px solid #f5c6c2;color:#8a1c13;margin-bottom:10px"><b>⚠ Overdue (${overdue.length}):</b> ${overdue.slice(0, 8).map(it => `${it.kind === 'event' ? '🗓' : '✅'} ${esc(it.title)}${clientName(it.clientId) ? ' — ' + esc(clientName(it.clientId)) : ''} (${fmtDate(it.date)})`).join(' · ')}${overdue.length > 8 ? ' …' : ''}</div>` : ''}
+      ${overdue.length ? `<div class="banner" style="background:#fdecea;border:1px solid #f5c6c2;color:#8a1c13;margin-bottom:10px">
+        <b>⚠ Overdue (${overdue.length}):</b>
+        <div style="margin-top:6px;display:flex;flex-direction:column;gap:5px">
+          ${overdue.slice(0, 15).map(it => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <span style="cursor:pointer" onclick="${it.kind === 'event' ? `editEvent('${it.id}')` : `location.hash='#/client/${it.clientId}/tasks'`}">${it.kind === 'event' ? '🗓' : '✅'} ${esc(it.title)}${clientName(it.clientId) ? ' — ' + esc(clientName(it.clientId)) : ''} <span style="opacity:.8">(${fmtDate(it.endDate || it.date)})</span></span>
+            <button class="btn small green" style="white-space:nowrap" onclick="calItemDone('${it.kind}','${it.id}')">✓ Done</button>
+          </div>`).join('')}
+          ${overdue.length > 15 ? `<span style="opacity:.8">…and ${overdue.length - 15} more</span>` : ''}
+        </div>
+      </div>` : ''}
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
         ${dow.map(d => `<div style="text-align:center;font-weight:700;font-size:12px;color:var(--mid);padding:2px 0">${d}</div>`).join('')}
         ${cells}
@@ -1889,20 +1908,39 @@ window.calToday = function () { calUI.month = ymNow(); vCalendar(); };
 window.calSetFilter = function (v) { calUI.clientFilter = v; vCalendar(); };
 window.openEvent = function (preClient, preDate) { eventModal({ clientId: preClient || (calUI.clientFilter !== 'all' ? calUI.clientFilter : ''), date: preDate || '' }); };
 window.editEvent = function (id) { const ev = (S.events || []).find(e => e.id === id); if (ev) eventModal(ev); };
+// Mark a calendar item complete straight from the calendar (task or event).
+window.calItemDone = async function (kind, id) {
+  try {
+    if (kind === 'task') await api('PUT', '/api/tasks/' + id, { status: 'done' });
+    else await api('PUT', '/api/events/' + id, { done: true, completedAt: new Date().toISOString() });
+    await reload(); route(); toast('Marked complete');
+  } catch (e) { toast(e.message, true); }
+};
+window.eventDone = async function (id, done) {
+  try {
+    await api('PUT', '/api/events/' + id, done ? { done: true, completedAt: new Date().toISOString() } : { done: false, completedAt: null });
+    await reload(); closeModal(); route(); toast(done ? 'Event completed' : 'Event reopened');
+  } catch (e) { toast(e.message, true); }
+};
 function eventModal(ev) {
   ev = ev || {};
   modal(`<h2>${ev.id ? 'Edit' : 'Add'} Event</h2>
+    ${ev.done ? '<div class="banner info" style="margin-bottom:10px">✅ Completed' + (ev.completedAt ? ' on ' + fmtDate(ev.completedAt) : '') + '</div>' : ''}
     <label class="fld">Title<input type="text" id="evTitle" value="${esc(ev.title || '')}" placeholder="e.g. Final inspection"></label>
     <label class="fld">Details<textarea id="evDetails">${esc(ev.details || '')}</textarea></label>
     <label class="fld">Project<select id="evClient"><option value="">— choose project —</option>${S.clients.map(c => `<option value="${c.id}" ${c.id === ev.clientId ? 'selected' : ''}>${esc(c.address || c.name)}</option>`).join('')}</select></label>
     <label class="fld">Assign to (optional)<select id="evEmp"><option value="">— unassigned —</option>${S.employees.map(e => `<option value="${e.id}" ${e.id === ev.employeeId ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select></label>
     <div class="row">
-      <label class="fld grow">Date<input type="date" id="evDate" value="${esc(ev.date || '')}"></label>
-      <label class="fld" style="max-width:150px">Time (optional)<input type="time" id="evTime" value="${esc(ev.time || '')}"></label>
+      <label class="fld grow">Start date<input type="date" id="evDate" value="${esc(ev.date || '')}"></label>
+      <label class="fld grow">End date (optional)<input type="date" id="evEnd" value="${esc(ev.endDate || '')}"></label>
+      <label class="fld" style="max-width:130px">Time (optional)<input type="time" id="evTime" value="${esc(ev.time || '')}"></label>
     </div>
-    <p class="muted" style="font-size:12px;margin:0 0 8px">Reminders go to the assignee and the admin email the day before and the morning of the date.</p>
-    <div style="display:flex;gap:10px;justify-content:${ev.id ? 'space-between' : 'flex-end'};margin-top:6px">
-      ${ev.id ? `<button class="btn danger" onclick="delEvent('${ev.id}')">Delete</button>` : ''}
+    <p class="muted" style="font-size:12px;margin:0 0 8px">Set an end date to span multiple days. Reminders go to the assignee and the admin the day before and the morning of the start date.</p>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:6px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px">
+        ${ev.id ? `<button class="btn danger" onclick="delEvent('${ev.id}')">Delete</button>` : ''}
+        ${ev.id ? (ev.done ? `<button class="btn secondary" onclick="eventDone('${ev.id}',false)">↺ Reopen</button>` : `<button class="btn green" onclick="eventDone('${ev.id}',true)">✓ Mark Complete</button>`) : ''}
+      </div>
       <div style="display:flex;gap:10px"><button class="btn secondary" onclick="closeModal()">Cancel</button>
       <button class="btn" onclick="saveEvent('${ev.id || ''}')">${ev.id ? 'Save' : 'Add Event'}</button></div>
     </div>`);
@@ -1911,15 +1949,18 @@ window.saveEvent = async function (id) {
   const title = $('#evTitle').value.trim();
   const clientId = $('#evClient').value;
   const date = $('#evDate').value;
+  let endDate = $('#evEnd').value || '';
   if (!title) return toast('Event title required', true);
   if (!clientId) return toast('Choose a project', true);
-  if (!date) return toast('Choose a date', true);
+  if (!date) return toast('Choose a start date', true);
+  if (endDate && endDate < date) return toast('End date must be on or after the start date', true);
+  if (endDate === date) endDate = ''; // single-day
   const existing = id ? (S.events || []).find(e => e.id === id) : null;
-  // Reset reminders when the date moves (or for new events) so the new date re-triggers.
+  // Reset reminders when the start date moves (or for new events) so it re-triggers.
   const remindersSent = (existing && existing.date === date && existing.remindersSent) || { dayBefore: null, morningOf: null };
   const body = {
     title, details: $('#evDetails').value.trim(), clientId,
-    employeeId: $('#evEmp').value || '', date, time: $('#evTime').value || '',
+    employeeId: $('#evEmp').value || '', date, endDate, time: $('#evTime').value || '',
     remindersSent, createdAt: (existing && existing.createdAt) || new Date().toISOString(),
   };
   try {
