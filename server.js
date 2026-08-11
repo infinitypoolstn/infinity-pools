@@ -308,7 +308,7 @@ app.put('/api/clients/:id', (req, res) => {
     // the Finance line items so the two totals always match.
     c.finance = store.specsToFinance(b.specs);
   }
-  for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
+  for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'disclosures', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
     if (b[k] !== undefined) c[k] = b[k];
   }
   if (b.finance !== undefined) {

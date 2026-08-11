@@ -312,7 +312,7 @@ function vProjects() {
 }
 
 /* ============================== CLIENT DETAIL ============================== */
-const TABS = [['overview', 'Overview'], ['siteExcavation', 'Site Excavation'], ['specs', 'Pool Specs'], ['scope', 'Scope of Work'], ['design', 'Design'], ['finance', 'Finance'], ['files', 'Files'], ['contract', 'Contract & Phases'], ['tasks', 'Tasks'], ['changes', 'Change Orders'], ['landscaping', 'Landscaping'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
+const TABS = [['overview', 'Overview'], ['siteExcavation', 'Site Excavation'], ['specs', 'Pool Specs'], ['scope', 'Scope of Work'], ['disclosures', 'Disclosures'], ['design', 'Design'], ['finance', 'Finance'], ['files', 'Files'], ['contract', 'Contract & Phases'], ['tasks', 'Tasks'], ['changes', 'Change Orders'], ['landscaping', 'Landscaping'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
 // Repair projects skip the new-pool build tabs and lead with the Repair tab.
 const REPAIR_TABS = [['repair', 'Repair'], ['files', 'Files'], ['tasks', 'Tasks'], ['costs', 'Costs (Internal)'], ['portal', 'Client Portal']];
 
@@ -340,7 +340,7 @@ function vClient(id, tab) {
       ${tabs.map(([k, l]) => `<button class="${k === tab ? 'active' : ''}" onclick="location.hash='#/client/${c.id}/${k}'">${l}</button>`).join('')}
     </div>
     <div id="tabBody"></div>`;
-  ({ overview: tOverview, siteExcavation: c => tModule(c, 'siteExcavation'), landscaping: c => tModule(c, 'landscaping'), specs: tSpecs, scope: tScope, design: tDesign, finance: tFinance, files: tFiles, contract: tContract, tasks: tTasks, changes: tChanges, costs: tCosts, portal: tPortal, repair: tRepair }[tab] || (isRepair ? tRepair : tOverview))(c);
+  ({ overview: tOverview, siteExcavation: c => tModule(c, 'siteExcavation'), landscaping: c => tModule(c, 'landscaping'), specs: tSpecs, scope: tScope, disclosures: tDisclosures, design: tDesign, finance: tFinance, files: tFiles, contract: tContract, tasks: tTasks, changes: tChanges, costs: tCosts, portal: tPortal, repair: tRepair }[tab] || (isRepair ? tRepair : tOverview))(c);
 }
 
 window.editClientInfo = function (id) {
@@ -701,6 +701,52 @@ window.scopeSecDel = async function (id, i) {
   const c = client(id);
   c.scope.splice(i, 1);
   await api('PUT', '/api/clients/' + id, { scope: c.scope }); await reload(); route();
+};
+
+/* ---------- Disclosures tab ---------- */
+// Per-project Disclosures, Exclusions & Site Conditions. Seeded from the master
+// (Settings) and editable here; the contract PDF uses this project's copy. Reuses
+// the same #discList / [data-disc] structure as the Settings master editor so the
+// discAdd / discMove / discRenumber helpers work unchanged.
+function tDisclosures(c) {
+  const discs = c.disclosures || [];
+  $('#tabBody').innerHTML = `
+    <div class="banner info">These Disclosures, Exclusions & Site Conditions appear on this project's contract PDF. Pre-filled from your standard set (edit the master in <a href="#/settings">Settings</a>). Edits here apply to this project only.${c.specsLocked ? ' The contract is signed — the already-signed PDF is unchanged; edits affect only newly generated copies.' : ''}</div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h2 style="margin:0">Disclosures, Exclusions & Site Conditions</h2>
+        <button class="btn secondary small" onclick="resetDisclosures('${c.id}')">↺ Reset to standard</button>
+      </div>
+      <div id="discList" style="margin-top:10px">
+      ${discs.map((d, i) => `
+        <div class="card" style="background:var(--blue-pale)" data-disc>
+          <div class="row" style="align-items:center">
+            <b class="disc-num" style="color:var(--blue-dark)">${i + 1}.</b>
+            <input class="input grow disc-title" value="${esc(d.title)}">
+            <button class="btn secondary small" title="Move up" onclick="discMove(this,-1)">↑</button>
+            <button class="btn secondary small" title="Move down" onclick="discMove(this,1)">↓</button>
+            <button class="btn danger small" onclick="this.closest('[data-disc]').remove();discRenumber()">✕</button>
+          </div>
+          <textarea class="input disc-body" style="margin-top:8px;min-height:110px">${esc(d.body)}</textarea>
+        </div>`).join('')}
+      </div>
+      <button class="btn secondary small" onclick="discAdd()">＋ Add disclosure section</button>
+      <div style="margin-top:14px"><button class="btn" onclick="saveDisclosures('${c.id}')">💾 Save Disclosures</button></div>
+    </div>`;
+}
+window.saveDisclosures = async function (id) {
+  const disclosures = [...document.querySelectorAll('#discList [data-disc]')].map(d => ({
+    id: d.dataset.id || ('d' + Math.random().toString(36).slice(2, 10)),
+    title: d.querySelector('.disc-title').value, body: d.querySelector('.disc-body').value,
+  })).filter(d => d.title.trim() || d.body.trim());
+  try { await api('PUT', '/api/clients/' + id, { disclosures }); await reload(); route(); toast('Disclosures saved'); }
+  catch (e) { toast(e.message, true); }
+};
+window.resetDisclosures = async function (id) {
+  if (!confirm('Reset this project\'s disclosures to your standard set? This replaces the current disclosures on this project.')) return;
+  const master = JSON.parse(JSON.stringify(S.settings.disclosures || []));
+  try { await api('PUT', '/api/clients/' + id, { disclosures: master }); await reload(); route(); toast('Reset to standard disclosures'); }
+  catch (e) { toast(e.message, true); }
 };
 
 /* ---------- Design tab ---------- */
