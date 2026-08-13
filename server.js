@@ -102,10 +102,10 @@ function siblingProjects(c) {
 // Strip internal-only data before anything client-facing is built from a record.
 // readOnly = true for the shareable view link and for non-primary (additional)
 // contacts: they see everything but can't sign or make binding decisions.
-function publicClientView(c, { readOnly = false } = {}) {
-  const quote = store.quoteTotal(c);
-  // Client-facing Pool Specs overview (sizes only — never any pricing), mirroring
-  // the admin Overview tab's size summary.
+// Pool Specs overview as [label, value] pairs — sizes only, never any pricing.
+// Mirrors the admin Overview tab's size summary; shared by the client portal and
+// the Employee View.
+function poolSpecsSummary(c) {
   const _s = c.specs || {}, _pb = _s.poolBase || {}, _spa = _s.spaBase || {}, _fl = _s.fireLounge || {};
   const _wf = _s.waterFeature || {}, _cp = _s.coldPlunge || {}, _ff = _s.fireFeature || {};
   const _ss = _pb.sunShelf || {}, _sp = _pb.spillover || {}, _lg = _pb.ledgeSeating || {};
@@ -121,6 +121,12 @@ function publicClientView(c, { readOnly = false } = {}) {
   if (_wf.included) specsSummary.push(['Water Feature', _wf.details || 'Included']);
   if (_cp.included) specsSummary.push(['Cold Plunge', _cp.details || 'Included']);
   if (_ff.included) specsSummary.push(['Fire Feature', _ff.details || 'Included']);
+  return specsSummary;
+}
+
+function publicClientView(c, { readOnly = false } = {}) {
+  const quote = store.quoteTotal(c);
+  const specsSummary = poolSpecsSummary(c);
   return {
     specsSummary,
     name: c.name, address: c.address,
@@ -200,6 +206,11 @@ function publicClientView(c, { readOnly = false } = {}) {
 // Operational info only: schedule, project status, and phase progress. Never
 // any pricing, costs, change-order values, contract, or payment details.
 // ---------------------------------------------------------------------------
+// File categories a field crew may see — operational documents only. Invoice
+// categories (which carry costs) and the Signed Contract are never included.
+const EMPLOYEE_FILE_CATEGORIES = ['Plans', 'Pool Renderings', 'Landscape Plans', 'Permits', 'Other'];
+const isImageName = n => /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(n || '');
+
 function employeeClientView(c) {
   const cur = store.currentPhase(c);
   const done = c.phases.filter(p => p.status === 'complete').length;
@@ -220,6 +231,13 @@ function employeeClientView(c) {
       key: p.key, name: p.name, time: p.time, status: p.status,
       startedAt: p.startedAt || null, dueDate: p.dueDate || null, completedAt: p.completedAt || null,
     })),
+    // Pool Specs — sizes only, never pricing.
+    specs: poolSpecsSummary(c),
+    // Operational files only (plans, renderings, permits) — download via the
+    // token-gated employee file route below.
+    files: (c.files || [])
+      .filter(f => EMPLOYEE_FILE_CATEGORIES.includes(f.category))
+      .map(f => ({ id: f.id, name: f.originalName, category: f.category, isImage: isImageName(f.originalName) })),
     siteExcavation: { included: !!(c.siteExcavation && c.siteExcavation.included), status: (c.siteExcavation && c.siteExcavation.status) || 'pending' },
     landscaping: { included: !!(c.landscaping && c.landscaping.included), status: (c.landscaping && c.landscaping.status) || 'pending' },
   };
@@ -1385,6 +1403,16 @@ app.get('/employee/:token', (req, res) => {
 app.get('/api/employee/:token', (req, res) => {
   if (req.params.token !== ensureEmployeeToken()) return res.status(404).json({ error: 'Not found' });
   res.json(employeeData());
+});
+// Serve an operational file to the Employee View — token-gated, and only for
+// whitelisted (non-financial) categories on non-test, non-lost projects.
+app.get('/api/employee/:token/files/:clientId/:fileId', (req, res) => {
+  if (req.params.token !== ensureEmployeeToken()) return res.status(404).end();
+  const c = store.data.clients.find(c => c.id === req.params.clientId && !c.testMode && c.status !== 'lost');
+  if (!c) return res.status(404).end();
+  const f = (c.files || []).find(f => f.id === req.params.fileId && EMPLOYEE_FILE_CATEGORIES.includes(f.category));
+  if (!f) return res.status(404).end();
+  res.download(path.join(UPLOADS_DIR, c.id, f.storedName), f.originalName);
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
