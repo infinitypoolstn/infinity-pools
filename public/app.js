@@ -1035,9 +1035,19 @@ function tContract(c) {
         ${c.quickbooks.invoiceUrl
           ? `<p style="margin-top:10px">Master invoice: <a href="${c.quickbooks.invoiceUrl}" target="_blank">open in QuickBooks ↗</a></p>
              <p class="muted" style="font-size:12px">One invoice for the full contract. Each phase draw is requested as a partial payment against it — no additional invoices are created.</p>`
-          : S.quickbooksConnected && c.contract.signedAt
-            ? `<div class="banner warn" style="margin-top:10px">Master invoice was not created — this usually means the QuickBooks connection needs attention.</div>
-               <button class="btn" style="margin-top:10px" onclick="createQbInvoice('${c.id}')">Create QB Customer &amp; Invoice</button>`
+          : S.quickbooksConnected
+            ? `${c.contract.signedAt
+                ? `<div class="banner warn" style="margin-top:10px">Master invoice was not created — this usually means the QuickBooks connection needs attention.</div>
+                   <button class="btn" style="margin-top:10px" onclick="createQbInvoice('${c.id}')">Create QB Customer &amp; Invoice</button>`
+                : ''}
+               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--blue-soft)">
+                 <h3 style="margin:0 0 4px;font-size:14px">Already invoiced in QuickBooks?</h3>
+                 <p class="muted" style="font-size:12px;margin:0 0 8px">For older jobs invoiced directly in QuickBooks, paste the invoice number (or its ID) to link it here. Phase draws still use its pay link; payments are marked manually.</p>
+                 <div class="row" style="align-items:center">
+                   <input class="input grow" id="qbLink_${c.id}" placeholder="Invoice # (e.g. 1037)" style="max-width:190px">
+                   <button class="btn secondary" onclick="linkQbInvoice('${c.id}')">🔗 Link invoice</button>
+                 </div>
+               </div>`
             : ''}`}
       </div>
     </div>
@@ -1090,6 +1100,16 @@ window.createQbInvoice = async function (id) {
     await api('POST', `/api/clients/${id}/quickbooks/create-invoice`);
     await reload(); route();
     toast('QuickBooks customer and master invoice created successfully');
+  } catch (e) { toast(e.message, true); }
+};
+window.linkQbInvoice = async function (id) {
+  const el = document.getElementById('qbLink_' + id);
+  const ref = ((el && el.value) || '').trim();
+  if (!ref) { toast('Enter the QuickBooks invoice number or ID', true); return; }
+  try {
+    const r = await api('POST', `/api/clients/${id}/quickbooks/link-invoice`, { invoice: ref });
+    await reload(); route();
+    toast('Linked QuickBooks invoice' + (r && r.invoice && r.invoice.docNumber ? ' #' + r.invoice.docNumber : ''));
   } catch (e) { toast(e.message, true); }
 };
 window.sendViaDocuseal = async function (id) {

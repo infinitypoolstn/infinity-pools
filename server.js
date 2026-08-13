@@ -823,6 +823,19 @@ app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => 
   res.json({ client: c });
 }));
 
+// Link an invoice already created in QuickBooks (e.g. an older job invoiced there
+// directly) to this project, by invoice number or ID. Payments stay manual.
+app.post('/api/clients/:id/quickbooks/link-invoice', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  if (c.testMode) return res.status(400).json({ error: 'This is a test job — invoicing is disabled.' });
+  if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
+  if (c.quickbooks.invoiceId) return res.status(400).json({ error: 'A QuickBooks invoice is already linked to this project.' });
+  const invoice = await quickbooks.linkExistingInvoice(c, req.body.invoice);
+  store.addAlert(`${c.address}: linked existing QuickBooks invoice${invoice.docNumber ? ' #' + invoice.docNumber : ''}.`, { clientId: c.id, type: 'info' });
+  store.save();
+  res.json({ client: c, invoice });
+}));
+
 // Change orders
 // ---------------------------------------------------------------------------
 app.post('/api/clients/:id/change-orders', wrap(async (req, res) => {
