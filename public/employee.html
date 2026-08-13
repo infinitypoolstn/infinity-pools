@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Schedule & Job Status — Infinity Pools</title>
+<style>
+  :root {
+    --blue:#0a5ea8; --blue-dark:#0b4d87; --blue-deep:#093d6b;
+    --past:#9aa7b2; --future:#a8c4da; --pale:#e8f3fb; --soft:#d7e8f5;
+    --ink:#16324a; --mid:#4a6b85; --green:#1f8a4c; --amber:#b97d10; --red:#c0392b;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",system-ui,Arial,sans-serif; background:linear-gradient(180deg,#eaf4fc 0%,#f6fafd 300px); color:var(--ink); }
+  .wrap { max-width:1120px; margin:0 auto; padding:20px 22px 60px; }
+  header { background:linear-gradient(135deg,var(--blue-dark),var(--blue)); color:#fff; border-radius:16px; padding:24px 30px; box-shadow:0 8px 30px rgba(10,94,168,.25); }
+  header .brand { font-weight:800; letter-spacing:3px; font-size:17px; }
+  header .brand .inf { font-size:24px; vertical-align:-3px; margin-right:6px; }
+  header h1 { margin:9px 0 2px; font-size:24px; }
+  header .sub { opacity:.85; font-size:14px; }
+  .card { background:#fff; border:1px solid var(--soft); border-radius:16px; box-shadow:0 2px 14px rgba(10,94,168,.07); padding:22px; margin-top:18px; }
+  h2 { margin:0 0 14px; color:var(--blue-deep); font-size:19px; }
+  .muted { color:var(--mid); font-size:13px; }
+  .tabs { display:flex; gap:8px; margin-top:18px; }
+  .tabs button { border:1.5px solid var(--soft); background:#fff; color:var(--blue-dark); border-radius:999px; padding:9px 20px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .tabs button.on { background:var(--blue); border-color:var(--blue); color:#fff; }
+
+  /* Schedule list */
+  .day { margin-bottom:16px; }
+  .day .dhead { font-weight:800; color:var(--blue-deep); font-size:14px; margin-bottom:6px; border-bottom:1px solid var(--soft); padding-bottom:4px; }
+  .day .dhead.today { color:var(--blue); }
+  .item { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px solid #f0f6fb; }
+  .item:last-child { border-bottom:none; }
+  .item .tm { font-size:12px; font-weight:700; color:var(--mid); min-width:64px; padding-top:2px; }
+  .item .body { flex:1; min-width:0; }
+  .item .ttl { font-weight:700; font-size:14px; }
+  .item .meta { font-size:12px; color:var(--mid); margin-top:2px; }
+  .pill { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; margin-left:6px; vertical-align:1px; }
+  .pill.event { background:var(--pale); color:var(--blue-dark); }
+  .pill.task { background:#fef2e0; color:var(--amber); }
+  .pill.overdue { background:#fbe6e3; color:var(--red); }
+
+  /* Calendar grid */
+  .calbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .calbar button { border:1.5px solid var(--soft); background:#fff; color:var(--blue-dark); border-radius:8px; padding:6px 14px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .calbar .mo { font-weight:800; color:var(--blue-deep); font-size:16px; }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .grid .dow { text-align:center; font-size:11px; font-weight:800; color:var(--mid); padding:4px 0; }
+  .cell { min-height:78px; border:1px solid var(--soft); border-radius:8px; padding:4px 5px; background:#fff; overflow:hidden; }
+  .cell.blank { background:transparent; border:none; }
+  .cell.today { border-color:var(--blue); box-shadow:0 0 0 2px rgba(10,94,168,.15) inset; }
+  .cell .dn { font-size:12px; font-weight:700; color:var(--mid); }
+  .cell.today .dn { color:var(--blue); }
+  .ev { font-size:10.5px; line-height:1.3; border-radius:4px; padding:1px 4px; margin-top:2px; background:var(--pale); color:var(--blue-dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ev.task { background:#fef2e0; color:var(--amber); }
+  .ev.overdue { background:#fbe6e3; color:var(--red); }
+
+  /* Projects */
+  .proj { border:1px solid var(--soft); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .proj .top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .proj .addr { font-weight:800; font-size:16px; color:var(--blue-deep); }
+  .proj .name { font-size:13px; color:var(--mid); margin-top:1px; }
+  .chip { display:inline-block; font-size:11.5px; font-weight:700; padding:3px 11px; border-radius:999px; }
+  .chip.active { background:#e2f3e9; color:var(--green); }
+  .chip.completed { background:#eef1f4; color:var(--past); }
+  .chip.contract_sent, .chip.prospect { background:var(--pale); color:var(--blue-dark); }
+  .bar { height:9px; border-radius:999px; background:var(--soft); margin:12px 0 4px; overflow:hidden; }
+  .bar > div { height:100%; background:linear-gradient(90deg,var(--blue),var(--blue-dark)); }
+  .phases { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .ph { font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; border:1.5px solid var(--soft); color:var(--future); }
+  .ph.complete { background:var(--past); border-color:var(--past); color:#fff; }
+  .ph.active { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .contacts { font-size:12.5px; color:var(--mid); margin-top:10px; }
+  .contacts b { color:var(--ink); }
+  a.tel { color:var(--blue); text-decoration:none; font-weight:700; }
+  .empty { text-align:center; color:var(--mid); padding:34px 10px; }
+  @media (max-width:640px) {
+    .wrap { padding:12px 12px 44px; }
+    .card { padding:16px; }
+    header { padding:18px; }
+    .cell { min-height:58px; }
+    .item .tm { min-width:52px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="inf">∞</span><span id="brand">Infinity Pools</span></div>
+    <h1>Team Schedule &amp; Job Status</h1>
+    <div class="sub">Read-only crew view — updated live from the office. No financial or client-billing details.</div>
+  </header>
+
+  <div class="tabs">
+    <button id="tabSchedule" class="on" onclick="showTab('schedule')">📅 Schedule</button>
+    <button id="tabProjects" onclick="showTab('projects')">🏗 Projects</button>
+  </div>
+
+  <div id="content"><div class="card"><div class="empty">Loading…</div></div></div>
+</div>
+
+<script>
+const TOKEN = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+let DATA = null;
+let tab = 'schedule';
+let calYM = null; // {y, m} 0-based month for the calendar grid
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const STATUS = { prospect:'Prospect', contract_sent:'Contract Sent', active:'In Build', completed:'Completed' };
+
+function fmtDate(s) {
+  if (!s) return '';
+  const [y, m, d] = String(s).slice(0, 10).split('-').map(Number);
+  if (!y) return s;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+}
+function fmtTime(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const ap = h >= 12 ? 'PM' : 'AM'; const h12 = ((h + 11) % 12) + 1;
+  return h12 + (m ? ':' + pad(m) : '') + ' ' + ap;
+}
+function clientName(id) {
+  const c = (DATA.clients || []).find(c => c.id === id);
+  return c ? (c.address || c.name) : '';
+}
+function employeeName(id) {
+  const e = (DATA.employees || []).find(e => e.id === id);
+  return e ? e.name : '';
+}
+
+// Merge events + open tasks into a single dated list of schedule items.
+function scheduleItems() {
+  const items = [];
+  for (const e of (DATA.events || [])) {
+    items.push({ kind:'event', date:e.date, endDate:e.endDate, time:e.time, title:e.title, details:e.details,
+      clientId:e.clientId, employeeId:e.employeeId });
+  }
+  for (const t of (DATA.tasks || [])) {
+    items.push({ kind:'task', date:t.dueDate, title:t.title, clientId:t.clientId });
+  }
+  return items;
+}
+// Expand multi-day events across their date range so they appear on each day.
+function itemsOnDate(items, dateStr) {
+  return items.filter(it => {
+    if (!it.date) return false;
+    if (it.endDate && it.endDate > it.date) return dateStr >= it.date && dateStr <= it.endDate;
+    return it.date === dateStr;
+  });
+}
+
+function showTab(t) {
+  tab = t;
+  $('#tabSchedule').className = t === 'schedule' ? 'on' : '';
+  $('#tabProjects').className = t === 'projects' ? 'on' : '';
+  render();
+}
+
+function render() {
+  if (!DATA) return;
+  $('#content').innerHTML = tab === 'schedule' ? renderSchedule() : renderProjects();
+}
+
+function renderSchedule() {
+  const items = scheduleItems();
+  const today = todayStr();
+
+  // Upcoming list: overdue tasks first, then everything from today forward (60 days).
+  const horizon = new Date(); horizon.setDate(horizon.getDate() + 60);
+  const horizonStr = horizon.getFullYear() + '-' + pad(horizon.getMonth() + 1) + '-' + pad(horizon.getDate());
+  const overdue = items.filter(it => it.kind === 'task' && it.date < today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = items.filter(it => it.date >= today && it.date <= horizonStr);
+
+  const byDate = {};
+  for (const it of upcoming) (byDate[it.date] = byDate[it.date] || []).push(it);
+  const dates = Object.keys(byDate).sort();
+
+  let listHtml = '';
+  if (overdue.length) {
+    listHtml += `<div class="day"><div class="dhead" style="color:var(--red)">⚠ Overdue</div>` +
+      overdue.map(it => itemRow(it, today)).join('') + `</div>`;
+  }
+  if (!dates.length && !overdue.length) {
+    listHtml = `<div class="empty">Nothing scheduled in the next 60 days.</div>`;
+  } else {
+    for (const d of dates) {
+      const its = byDate[d].sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+      listHtml += `<div class="day"><div class="dhead ${d === today ? 'today' : ''}">${fmtDate(d)}${d === today ? ' · Today' : ''}</div>` +
+        its.map(it => itemRow(it, today)).join('') + `</div>`;
+    }
+  }
+
+  return `
+    <div class="card">
+      <h2>Calendar</h2>
+      ${renderCalendar(items, today)}
+    </div>
+    <div class="card">
+      <h2>Upcoming</h2>
+      ${listHtml}
+    </div>`;
+}
+
+function itemRow(it, today) {
+  const overdue = it.kind === 'task' && it.date < today;
+  const pillClass = overdue ? 'overdue' : it.kind;
+  const pillText = overdue ? 'Overdue' : (it.kind === 'task' ? 'Task' : 'Event');
+  const proj = it.clientId ? clientName(it.clientId) : '';
+  const who = it.employeeId ? employeeName(it.employeeId) : '';
+  const metaBits = [];
+  if (proj) metaBits.push('📍 ' + esc(proj));
+  if (who) metaBits.push('👤 ' + esc(who));
+  if (it.kind === 'task') metaBits.push('due ' + fmtDate(it.date));
+  if (it.details) metaBits.push(esc(it.details));
+  return `<div class="item">
+    <div class="tm">${it.kind === 'event' && it.time ? esc(fmtTime(it.time)) : (it.kind === 'task' ? '📋' : 'All day')}</div>
+    <div class="body">
+      <div class="ttl">${esc(it.title)}<span class="pill ${pillClass}">${pillText}</span></div>
+      ${metaBits.length ? `<div class="meta">${metaBits.join(' · ')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderCalendar(items, today) {
+  if (!calYM) { const d = new Date(); calYM = { y:d.getFullYear(), m:d.getMonth() }; }
+  const { y, m } = calYM;
+  const first = new Date(y, m, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += `<div class="cell blank"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = y + '-' + pad(m + 1) + '-' + pad(d);
+    const its = itemsOnDate(items, ds).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+    const evs = its.slice(0, 3).map(it => {
+      const overdue = it.kind === 'task' && it.date < today;
+      const cls = overdue ? 'overdue' : (it.kind === 'task' ? 'task' : '');
+      const t = it.kind === 'event' && it.time ? fmtTime(it.time) + ' ' : '';
+      return `<div class="ev ${cls}" title="${esc(it.title)}">${esc(t + it.title)}</div>`;
+    }).join('');
+    const more = its.length > 3 ? `<div class="ev" style="background:none;color:var(--mid)">+${its.length - 3} more</div>` : '';
+    cells += `<div class="cell ${ds === today ? 'today' : ''}"><div class="dn">${d}</div>${evs}${more}</div>`;
+  }
+
+  return `
+    <div class="calbar">
+      <button onclick="calMove(-1)">‹ Prev</button>
+      <span class="mo">${MONTHS[m]} ${y}</span>
+      <button onclick="calMove(1)">Next ›</button>
+    </div>
+    <div class="grid">
+      ${DOW.map(d => `<div class="dow">${d}</div>`).join('')}
+      ${cells}
+    </div>`;
+}
+function calMove(delta) {
+  let { y, m } = calYM; m += delta;
+  if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
+  calYM = { y, m };
+  render();
+}
+
+function renderProjects() {
+  const clients = (DATA.clients || []).filter(c => c.status !== 'completed');
+  const done = (DATA.clients || []).filter(c => c.status === 'completed');
+  const order = { active:0, contract_sent:1, prospect:2, completed:3 };
+  clients.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || String(a.address).localeCompare(String(b.address)));
+
+  if (!clients.length && !done.length) return `<div class="card"><div class="empty">No active projects.</div></div>`;
+
+  const card = c => {
+    const cur = c.currentPhase;
+    const extras = [];
+    if (c.siteExcavation && c.siteExcavation.included) extras.push(`Site Excavation: ${statusWord(c.siteExcavation.status)}`);
+    if (c.landscaping && c.landscaping.included) extras.push(`Landscaping: ${statusWord(c.landscaping.status)}`);
+    const ct = c.contacts || {};
+    const contactBits = [];
+    if (ct.builder) contactBits.push(`<b>Builder:</b> ${esc(ct.builder)}`);
+    if (ct.contractor) contactBits.push(`<b>Contractor:</b> ${esc(ct.contractor)}`);
+    if (ct.other) contactBits.push(esc(ct.other));
+    return `<div class="proj">
+      <div class="top">
+        <div>
+          <div class="addr">${esc(c.address || c.name || 'Project')}</div>
+          ${c.name && c.address ? `<div class="name">${esc(c.name)}${c.phone ? ` · <a class="tel" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>` : (c.phone ? `<div class="name"><a class="tel" href="tel:${esc(c.phone)}">${esc(c.phone)}</a></div>` : '')}
+        </div>
+        <span class="chip ${c.status}">${STATUS[c.status] || c.status}</span>
+      </div>
+      ${cur ? `<div class="muted" style="margin-top:8px">Current phase: <b style="color:var(--ink)">${esc(cur.name)}</b>${cur.time ? ' · ' + esc(cur.time) : ''}${cur.dueDate ? ' · due ' + fmtDate(cur.dueDate) : ''}</div>`
+            : c.status === 'completed' ? `<div class="muted" style="margin-top:8px">🏁 Build complete</div>` : ''}
+      <div class="bar"><div style="width:${c.progress || 0}%"></div></div>
+      <div class="muted">${c.progress || 0}% complete${c.targetFinishDate ? ` · 🎯 target finish ${fmtDate(c.targetFinishDate)}` : ''}</div>
+      <div class="phases">
+        ${(c.phases || []).map(p => `<span class="ph ${p.status}" title="${esc(p.name)}${p.dueDate ? ' — due ' + esc(fmtDate(p.dueDate)) : ''}">${esc(p.name)}</span>`).join('')}
+      </div>
+      ${extras.length ? `<div class="contacts">${extras.map(esc).join(' · ')}</div>` : ''}
+      ${contactBits.length ? `<div class="contacts">${contactBits.join(' · ')}</div>` : ''}
+    </div>`;
+  };
+
+  return `<div class="card">
+    <h2>Active Projects</h2>
+    ${clients.length ? clients.map(card).join('') : '<div class="empty">No active projects right now.</div>'}
+  </div>
+  ${done.length ? `<div class="card"><h2>Completed</h2>${done.map(card).join('')}</div>` : ''}`;
+}
+function statusWord(s) { return s === 'complete' ? 'Done' : s === 'active' ? 'In progress' : 'Not started'; }
+
+async function load() {
+  try {
+    const r = await fetch('/api/employee/' + encodeURIComponent(TOKEN));
+    if (!r.ok) throw new Error('not found');
+    DATA = await r.json();
+    if (DATA.companyName) { $('#brand').textContent = DATA.companyName; document.title = 'Team Schedule & Job Status — ' + DATA.companyName; }
+    render();
+  } catch (e) {
+    $('#content').innerHTML = `<div class="card"><div class="empty">This link isn’t valid. Ask the office for an up-to-date Employee View link.</div></div>`;
+  }
+}
+load();
+</script>
+</body>
+</html>

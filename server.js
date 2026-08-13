@@ -34,7 +34,7 @@ const APP_PASS = process.env.APP_PASS || '';
 if (APP_USER && APP_PASS) {
   // Public (no Basic Auth): health check, client portal + its API, DocuSeal webhooks,
   // and the finish swatch images the portal displays. /uploads (contracts, invoices) stays protected.
-  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/api/webhooks/docuseal', '/swatches/'];
+  const PUBLIC_PATHS = ['/healthz', '/portal/', '/api/portal/', '/employee/', '/api/employee/', '/api/webhooks/docuseal', '/swatches/'];
   app.use((req, res, next) => {
     if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
     const auth = req.headers.authorization;
@@ -196,6 +196,65 @@ function publicClientView(c, { readOnly = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Employee View — a public, read-only, no-login dashboard for field crews.
+// Operational info only: schedule, project status, and phase progress. Never
+// any pricing, costs, change-order values, contract, or payment details.
+// ---------------------------------------------------------------------------
+function employeeClientView(c) {
+  const cur = store.currentPhase(c);
+  const done = c.phases.filter(p => p.status === 'complete').length;
+  return {
+    id: c.id,
+    name: c.name,
+    address: c.address,
+    phone: c.phone || '',
+    status: c.status,
+    projectType: c.projectType || 'new_pool',
+    targetFinishDate: c.targetFinishDate || null,
+    // Builder / contractor / other contacts — team-only operational info.
+    contacts: c.contacts || {},
+    currentPhase: cur ? { key: cur.key, name: cur.name, time: cur.time, dueDate: cur.dueDate || null } : null,
+    progress: c.phases.length ? Math.round(100 * done / c.phases.length) : 0,
+    // Phase names, status, and dates only — no draw percentages or dollar amounts.
+    phases: c.phases.map(p => ({
+      key: p.key, name: p.name, time: p.time, status: p.status,
+      startedAt: p.startedAt || null, dueDate: p.dueDate || null, completedAt: p.completedAt || null,
+    })),
+    siteExcavation: { included: !!(c.siteExcavation && c.siteExcavation.included), status: (c.siteExcavation && c.siteExcavation.status) || 'pending' },
+    landscaping: { included: !!(c.landscaping && c.landscaping.included), status: (c.landscaping && c.landscaping.status) || 'pending' },
+  };
+}
+
+// A stable, unguessable token that grants access to the Employee View. Generated
+// once and stored in settings so the same shareable link keeps working.
+function ensureEmployeeToken() {
+  if (!store.data.settings.employeeToken) {
+    store.data.settings.employeeToken = store.token();
+    store.saveNow();
+  }
+  return store.data.settings.employeeToken;
+}
+
+function employeeData() {
+  const clients = store.data.clients.filter(c => !c.testMode && c.status !== 'lost');
+  const ids = new Set(clients.map(c => c.id));
+  return {
+    companyName: store.data.settings.companyName || 'Infinity Pools',
+    generatedAt: new Date().toISOString(),
+    clients: clients.map(employeeClientView),
+    employees: (store.data.employees || []).map(e => ({ id: e.id, name: e.name })),
+    // Scheduled events for these projects (plus any company-wide dated items).
+    events: (store.data.events || [])
+      .filter(e => !e.clientId || ids.has(e.clientId))
+      .map(e => ({ id: e.id, clientId: e.clientId || null, title: e.title, details: e.details || '', date: e.date, endDate: e.endDate || null, time: e.time || '', employeeId: e.employeeId || null })),
+    // Open, dated tasks only — no financial fields on tasks.
+    tasks: (store.data.tasks || [])
+      .filter(t => t.status !== 'done' && (!t.clientId || ids.has(t.clientId)) && t.dueDate)
+      .map(t => ({ id: t.id, clientId: t.clientId || null, title: t.title, dueDate: t.dueDate, status: t.status })),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap / dashboard
 // ---------------------------------------------------------------------------
 function readMarketRates() {
@@ -208,6 +267,7 @@ function readMarketRates() {
 
 app.get('/api/bootstrap', (req, res) => {
   const d = store.data;
+  ensureEmployeeToken(); // make sure settings.employeeToken exists for the dashboard link
   res.json({
     settings: d.settings,
     marketRates: readMarketRates(),
@@ -1316,6 +1376,15 @@ app.post('/api/portal/:token/design-selections', (req, res) => {
     store.save();
   }
   res.json(publicClientView(c, { readOnly: req.portalReadOnly }));
+});
+
+// Employee View — public read-only page + its data API (see PUBLIC_PATHS).
+app.get('/employee/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'employee.html'));
+});
+app.get('/api/employee/:token', (req, res) => {
+  if (req.params.token !== ensureEmployeeToken()) return res.status(404).json({ error: 'Not found' });
+  res.json(employeeData());
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));

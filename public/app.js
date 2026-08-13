@@ -96,6 +96,8 @@ function vDashboard() {
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn secondary" onclick="createTestJob()" title="Create a sample project you can step through end to end — no QuickBooks invoice is ever created">🧪 Create Test Job</button>
         <a class="btn secondary" href="/api/forms/pool-spec-intake.pdf" target="_blank" title="Blank, fillable Pool Specs form to send to a sales rep">⬇ Sales Rep Form</a>
+        <a class="btn secondary" href="/employee/${(S.settings && S.settings.employeeToken) || ''}" target="_blank" title="Read-only schedule & project status for field crews — no financials, no login required">👷 Employee View</a>
+        <button class="btn secondary" onclick="copyEmployeeLink()" title="Copy the shareable Employee View link">🔗 Copy Link</button>
         <button class="btn" onclick="addProspect()">＋ Add New Prospect</button>
       </div>
     </div>
@@ -158,6 +160,12 @@ function vDashboard() {
       </div>
     </div>`;
 }
+
+window.copyEmployeeLink = function () {
+  const url = location.origin + '/employee/' + ((S.settings && S.settings.employeeToken) || '');
+  navigator.clipboard.writeText(url);
+  toast('Employee link copied');
+};
 
 // Dashboard Projects — filter options and sortable columns.
 const DASH_FILTERS = [['all', 'All statuses'], ['prospect', 'Prospect'], ['contract_sent', 'Contract Sent'], ['active', 'In Build'], ['completed', 'Completed'], ['lost', 'Lost']];
@@ -1015,6 +1023,7 @@ function tContract(c) {
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <a class="btn secondary" href="/api/clients/${c.id}/contract.pdf" target="_blank">⬇ Preview Contract PDF</a>
           <button class="btn secondary" onclick="sendContract('${c.id}')">📧 Email PDF to Client</button>
+          ${(() => { const sf = (c.files || []).find(f => f.category === 'Signed Contract'); return c.contract.signedAt && sf ? `<a class="btn secondary" href="/api/clients/${c.id}/files/${sf.id}/download" target="_blank">📄 View Signed PDF</a>` : ''; })()}
         </div>
         ${docusealSection}
         ${signedSection}
