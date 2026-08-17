@@ -637,8 +637,13 @@ app.post('/api/clients/:id/contract/send', wrap(async (req, res) => {
 // locks specs + pricing, starts the Design phase, creates the QBO
 // estimate, alerts the team, and either records an in-person deposit or sends the
 // design-draw payment request. Returns { qb, qbError }.
-async function finalizeContractSigning(c, { method, depositMethod = null, finishText = null, note = '' }) {
-  c.contract.signedAt = new Date().toISOString();
+// Convert a date-only string (YYYY-MM-DD from a date input) to an ISO timestamp at
+// noon UTC, so it renders as the same calendar day in any timezone. Returns null
+// for empty/invalid input (callers fall back to "now").
+const dateOnlyToIso = d => (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? new Date(d + 'T12:00:00Z').toISOString() : null;
+
+async function finalizeContractSigning(c, { method, depositMethod = null, finishText = null, note = '', signedAt = null, depositReceivedAt = null }) {
+  c.contract.signedAt = signedAt || new Date().toISOString();
   c.contract.signedMethod = method;
   c.contract.depositMethod = depositMethod;
   if (finishText && !c.selectedFinishes.includes(finishText)) c.selectedFinishes.push(finishText);
@@ -669,7 +674,7 @@ async function finalizeContractSigning(c, { method, depositMethod = null, finish
   store.addAlert(`🎉 Contract SIGNED (${method}${depositMethod ? ', deposit by ' + depositMethod : ''}): ${c.name} — ${c.address}. Design phase started.${note}`, { clientId: c.id, type: 'phase' });
 
   if (depositMethod) {
-    design.paymentReceivedAt = new Date().toISOString();
+    design.paymentReceivedAt = depositReceivedAt || new Date().toISOString();
     design.paymentMethod = depositMethod;
   } else if (c.email && design.drawPct > 0) {
     await alerts.sendPaymentRequest(c, design);
@@ -691,11 +696,25 @@ async function finalizeContractSigning(c, { method, depositMethod = null, finish
 
 // Manual fallback: mark a contract signed outside the system (paper, or a signed
 // PDF emailed back). Locks specs + pricing, starts Design phase, sends design draw
-// payment request, creates QBO invoice if connected.
-app.post('/api/clients/:id/contract/mark-signed', wrap(async (req, res) => {
+// payment request, creates QBO invoice if connected. Optionally accepts the actual
+// signed PDF (multipart field "signedPdf") plus explicit signed / deposit-received
+// dates (YYYY-MM-DD); both default to now when omitted.
+app.post('/api/clients/:id/contract/mark-signed', upload.single('signedPdf'), wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
-  const { method = 'manual', depositMethod = null } = req.body; // method: digital|paper, depositMethod: check|cash|null
-  const { qb, qbError } = await finalizeContractSigning(c, { method, depositMethod });
+  const method = req.body.method || 'manual';            // digital | paper
+  const depositMethod = req.body.depositMethod || null;  // check | cash | null
+  const signedAt = dateOnlyToIso(req.body.signedAt);
+  const depositReceivedAt = dateOnlyToIso(req.body.depositReceivedAt);
+  // Store the uploaded signed PDF under the 'Signed Contract' category so the
+  // contract card's "View Signed PDF" button finds it (mirrors DocuSeal).
+  if (req.file) {
+    c.files.push({
+      id: store.id(), originalName: req.file.originalname || 'Signed Contract.pdf',
+      storedName: req.file.filename, category: 'Signed Contract',
+      size: req.file.size, uploadedAt: new Date().toISOString(), isCoverPhoto: false,
+    });
+  }
+  const { qb, qbError } = await finalizeContractSigning(c, { method, depositMethod, signedAt, depositReceivedAt });
   res.json({ client: c, quickbooksInvoice: qb, quickbooksError: qbError });
 }));
 

@@ -993,15 +993,26 @@ function tContract(c) {
       <p class="muted" style="margin-top:6px">Prepares the contract for the client to review and sign directly in their portal — no email round-trip. The signed PDF is saved to Files automatically.</p></div>`;
   }
 
+  const _today = new Date().toISOString().slice(0, 10);
+  const _hasSignedPdf = (c.files || []).some(f => f.category === 'Signed Contract');
   const signedSection = c.contract.signedAt
-    ? '<div class="banner info">✓ Signed. Specs locked; manage the build below.</div>'
+    ? `<div class="banner info">✓ Signed. Specs locked; manage the build below.</div>${_hasSignedPdf ? '' : `
+        <div class="row" style="align-items:flex-end;margin-top:10px">
+          <label class="fld grow">Attach the signed PDF (optional)<input type="file" id="signPdfLate" accept="application/pdf"></label>
+          <button class="btn secondary" style="margin-bottom:12px" onclick="attachSignedPdf('${c.id}')">⬆ Upload</button>
+        </div>`}`
     : `<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--mid);font-size:13px">Manual fallback — mark as signed outside the portal</summary>
         <div style="margin-top:10px">
           <div class="row" style="align-items:flex-end">
             <label class="fld grow">How was it signed?<select id="signMethod"><option value="digital">Digital signature (emailed back)</option><option value="paper">Paper (in person)</option></select></label>
             <label class="fld grow">Deposit taken now?<select id="depMethod"><option value="">No — send payment link</option><option value="check">Yes — check</option><option value="cash">Yes — cash</option></select></label>
-            <button class="btn green" style="margin-bottom:12px" onclick="markSigned('${c.id}')">✓ Contract Signed</button>
           </div>
+          <div class="row" style="align-items:flex-end">
+            <label class="fld grow">Date signed<input type="date" id="signDate" value="${_today}"></label>
+            <label class="fld grow">Deposit received date<input type="date" id="depDate" value="${_today}"></label>
+          </div>
+          <label class="fld">Signed PDF (optional)<input type="file" id="signPdf" accept="application/pdf"></label>
+          <div style="margin-top:10px"><button class="btn green" onclick="markSigned('${c.id}')">✓ Contract Signed</button></div>
           <p class="muted">Signing locks specs & pricing, starts the Design phase, alerts the team, ${c.testMode ? '<b>(test job — no invoice is created)</b>' : S.quickbooksConnected ? 'creates the QuickBooks invoice for the full amount,' : ''} and sends the 10% design draw request.</p>
         </div></details>`;
 
@@ -1089,9 +1100,33 @@ window.sendEstimate = async function (id) {
 window.markSigned = async function (id) {
   if (!confirm('Mark contract as signed? This locks specs and pricing.')) return;
   try {
-    const r = await api('POST', `/api/clients/${id}/contract/mark-signed`, { method: $('#signMethod').value, depositMethod: $('#depMethod').value || null });
+    const dep = ($('#depMethod').value || '');
+    const fd = new FormData();
+    fd.append('method', $('#signMethod').value);
+    fd.append('depositMethod', dep);
+    if ($('#signDate') && $('#signDate').value) fd.append('signedAt', $('#signDate').value);
+    if (dep && $('#depDate') && $('#depDate').value) fd.append('depositReceivedAt', $('#depDate').value);
+    const pdf = $('#signPdf') && $('#signPdf').files[0];
+    if (pdf) fd.append('signedPdf', pdf);
+    const r = await api('POST', `/api/clients/${id}/contract/mark-signed`, fd);
     await reload(); route();
     toast('Contract signed — Design phase started' + (r.quickbooksError ? ' (QuickBooks error: ' + r.quickbooksError + ')' : ''));
+  } catch (e) { toast(e.message, true); }
+};
+// Attach the actual signed PDF after a contract was already marked signed. Reuses
+// the files route with the out-of-band 'Signed Contract' category the contract
+// card's "View Signed PDF" button looks for.
+window.attachSignedPdf = async function (id) {
+  const el = document.getElementById('signPdfLate');
+  const pdf = el && el.files[0];
+  if (!pdf) { toast('Choose a PDF first', true); return; }
+  try {
+    const fd = new FormData();
+    fd.append('category', 'Signed Contract');
+    fd.append('files', pdf);
+    await api('POST', `/api/clients/${id}/files`, fd);
+    await reload(); route();
+    toast('Signed PDF attached');
   } catch (e) { toast(e.message, true); }
 };
 window.createQbInvoice = async function (id) {
