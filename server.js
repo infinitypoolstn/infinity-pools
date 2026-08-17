@@ -1190,10 +1190,10 @@ app.post('/api/clients/:id/portal/send-link', wrap(async (req, res) => {
   const recipients = clientEmails(c);
   if (!recipients.length) return res.status(400).json({ error: 'Client has no email address on file' });
   const portalUrl = `${req.protocol}://${req.get('host')}/portal/${c.portalToken}`;
-  await mailer.send({
+  const rec = await mailer.send({
     to: recipients,
     subject: `Your Infinity Pools project page — ${c.address}`,
-    html: `<p>Hi ${c.name.split(' ')[0]},</p>
+    html: `<p>Hi ${(c.name || 'there').split(' ')[0]},</p>
       <p>Here is your personal project page for <b>${c.address}</b>. You can use it any time to:</p>
       <ul>
         <li>Follow your build progress through each phase</li>
@@ -1208,6 +1208,14 @@ app.post('/api/clients/:id/portal/send-link', wrap(async (req, res) => {
       <p style="font-size:13px;color:#4a6b85;">Bookmark this page — the link is private and unique to your project.</p>
       <p>Questions? Just reply to this email.<br>— Infinity Pools</p>`,
   });
+  // Only claim success when the email actually sent. mailer.send never throws —
+  // it records the real outcome on the outbox record — so report that truthfully
+  // instead of always showing "emailed".
+  if (rec.status !== 'sent') {
+    store.addAlert(`⚠ Portal link to ${c.name || c.address} was NOT sent: ${rec.error || rec.status}`, { clientId: c.id, type: 'error' });
+    store.save();
+    return res.status(502).json({ error: rec.error || 'Email was not sent', status: rec.status });
+  }
   c.contract.portalLinkSentAt = new Date().toISOString();
   store.addAlert(`Portal link emailed to ${c.name} (${recipients.join(', ')})`, { clientId: c.id });
   store.save();
