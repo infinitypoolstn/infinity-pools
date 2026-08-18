@@ -231,6 +231,8 @@ function employeeClientView(c) {
       key: p.key, name: p.name, time: p.time, status: p.status,
       startedAt: p.startedAt || null, dueDate: p.dueDate || null, completedAt: p.completedAt || null,
     })),
+    // Team checklist — read-only status for the crew (they can't toggle it here).
+    checklist: (c.checklist || []).map(it => ({ id: it.id, label: it.label, done: !!it.done, completedAt: it.completedAt || null })),
     // Pool Specs — sizes only, never pricing.
     specs: poolSpecsSummary(c),
     // Operational files only (plans, renderings, permits) — download via the
@@ -411,6 +413,27 @@ app.delete('/api/clients/:id', (req, res) => {
   store.data.clients.splice(i, 1);
   store.save();
   res.json({ ok: true });
+});
+
+// Save the project's team checklist (admin only). Preserves each item's
+// completedAt: stamps it when an item is first checked, clears it when unchecked.
+app.put('/api/clients/:id/checklist', (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const prev = new Map((c.checklist || []).map(it => [it.id, it]));
+  c.checklist = (Array.isArray(req.body.checklist) ? req.body.checklist : [])
+    .filter(it => (it.label || '').trim())
+    .map(it => {
+      const before = it.id && prev.get(it.id);
+      const done = !!it.done;
+      return {
+        id: (before ? it.id : store.id()),
+        label: String(it.label).trim(),
+        done,
+        completedAt: done ? ((before && before.completedAt) || new Date().toISOString()) : null,
+      };
+    });
+  store.save();
+  res.json(c);
 });
 
 // Cancel / Start Over: reset the build, keep the client record.

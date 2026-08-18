@@ -82,6 +82,13 @@
   /* Project detail */
   .back { display:inline-flex; align-items:center; gap:6px; border:1.5px solid var(--soft); background:#fff; color:var(--blue-dark); border-radius:999px; padding:8px 16px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; margin-top:18px; }
   .back:hover { border-color:var(--future); }
+  .chklist { display:flex; flex-direction:column; gap:8px; }
+  .chk { display:flex; align-items:center; gap:10px; font-size:14px; }
+  .chk .box { flex:none; width:22px; height:22px; border-radius:6px; border:2px solid var(--future); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:#fff; }
+  .chk.done .box { background:var(--green); border-color:var(--green); }
+  .chk .lbl { flex:1; font-weight:600; }
+  .chk.done .lbl { color:var(--mid); }
+  .chk .when { font-size:12px; color:var(--mid); white-space:nowrap; }
   .spectbl { width:100%; border-collapse:collapse; }
   .spectbl td { padding:9px 6px; border-bottom:1px solid #eef4f9; font-size:14px; }
   .spectbl td:first-child { color:var(--mid); font-weight:600; width:44%; }
@@ -263,6 +270,7 @@ function renderDetail() {
 
   const specs = c.specs || [];
   const files = c.files || [];
+  const checklist = c.checklist || [];
 
   return `
     <button class="back" onclick="backToList()">← All projects</button>
@@ -287,6 +295,17 @@ function renderDetail() {
       ${extras.length ? `<div class="contacts">${extras.map(esc).join(' · ')}</div>` : ''}
       ${contactBits.length ? `<div class="contacts">${contactBits.join(' · ')}</div>` : ''}
     </div>
+
+    ${checklist.length ? `<div class="card">
+      <h2>✅ Checklist</h2>
+      <div class="chklist">
+        ${checklist.map(it => `<div class="chk ${it.done ? 'done' : ''}">
+          <span class="box">${it.done ? '✓' : ''}</span>
+          <span class="lbl">${esc(it.label)}</span>
+          ${it.done && it.completedAt ? `<span class="when">${fmtDate(it.completedAt)}</span>` : ''}
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
 
     <div class="card">
       <h2>🏊 Pool Specs</h2>

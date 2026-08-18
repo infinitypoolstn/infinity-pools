@@ -1354,6 +1354,15 @@ function tOverview(c) {
     </div>
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">✅ Project Checklist</h2>
+        <button class="btn small" onclick="checklistSave('${c.id}')">💾 Save Checklist</button>
+      </div>
+      <p class="muted" style="margin:4px 0 8px;font-size:12px">Team milestones for this project — also shown (read-only) on the Employee View.</p>
+      <div id="checklist">${(c.checklist || []).map(checklistRow).join('')}</div>
+      <button class="btn secondary small" onclick="checklistAdd()">＋ Add item</button>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0">📇 Contacts</h2>
         <button class="btn small" onclick="saveContacts('${c.id}')">💾 Save Contacts</button>
       </div>
@@ -1375,6 +1384,31 @@ function tOverview(c) {
     </div>
     ${moduleCard('landscaping')}`;
 }
+
+// One editable row of the project checklist (Overview tab).
+function checklistRow(it) {
+  it = it || { id: '', label: '', done: false, completedAt: null };
+  return `<div class="row" data-chk data-id="${esc(it.id || '')}" style="align-items:center;margin-bottom:6px">
+    <label class="check" style="margin:0"><input type="checkbox" class="chk-done" ${it.done ? 'checked' : ''}></label>
+    <input class="input grow chk-label" value="${esc(it.label || '')}" placeholder="e.g. Final inspection scheduled">
+    ${it.done && it.completedAt ? `<span class="muted" style="font-size:12px;white-space:nowrap">✓ ${fmtDate(it.completedAt)}</span>` : ''}
+    <button class="btn danger small" onclick="this.closest('[data-chk]').remove()">✕</button>
+  </div>`;
+}
+window.checklistAdd = function () {
+  $('#checklist').insertAdjacentHTML('beforeend', checklistRow());
+};
+window.checklistSave = async function (id) {
+  const checklist = [...document.querySelectorAll('[data-chk]')].map(r => ({
+    id: r.getAttribute('data-id') || null,
+    label: r.querySelector('.chk-label').value,
+    done: r.querySelector('.chk-done').checked,
+  })).filter(it => it.label.trim());
+  try {
+    await api('PUT', `/api/clients/${id}/checklist`, { checklist });
+    await reload(); toast('Checklist saved'); route();
+  } catch (e) { toast(e.message, true); }
+};
 
 // Site Excavation / Landscaping tab: details + priced line items (add/remove).
 // The include toggle lives on the Overview tab; here we just show its state.
