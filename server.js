@@ -84,10 +84,16 @@ const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
 function portalEligible(c) {
   return !!(c.contract && (c.contract.sentAt || c.contract.signedAt)) && c.status !== 'lost';
 }
-// Every email that may receive the portal link and log in: the primary plus any
-// additionals, normalized (lowercased, trimmed, de-duplicated, non-empty).
+// Every email that may receive the portal link and log in: the primary, any
+// additionals, and the second authorized signer — normalized (lowercased,
+// trimmed, de-duplicated, non-empty).
 function clientEmails(c) {
-  return [...new Set([c.email, ...(c.additionalEmails || [])].map(e => (e || '').trim().toLowerCase()).filter(Boolean))];
+  return [...new Set([c.email, ...(c.additionalEmails || []), c.secondSignerEmail].map(e => (e || '').trim().toLowerCase()).filter(Boolean))];
+}
+// The emails authorized to SIGN the contract and take binding portal actions:
+// the primary plus the optional second authorized signer. Either one can sign.
+function signerEmails(c) {
+  return [...new Set([c.email, c.secondSignerEmail].map(e => (e || '').trim().toLowerCase()).filter(Boolean))];
 }
 // All portal projects sharing this client's email (the current one is always
 // included so the switcher can show it as selected).
@@ -388,7 +394,7 @@ app.put('/api/clients/:id', (req, res) => {
     // the Finance line items so the two totals always match.
     c.finance = store.specsToFinance(b.specs);
   }
-  for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'disclosures', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
+  for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'secondSignerEmail', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'disclosures', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
     if (b[k] !== undefined) c[k] = b[k];
   }
   if (b.finance !== undefined) {
@@ -1310,10 +1316,10 @@ function portalClient(req, res, { allowQuerySession = false } = {}) {
     (session.email && clientEmails(c).includes(session.email) && portalEligible(c))
   );
   if (!ok) { res.status(401).json({ error: 'verify' }); return null; }
-  // Only the project's PRIMARY contact can sign / make binding decisions. Everyone
-  // else who verified (additional emails) is read-only.
-  const primary = (c.email || '').trim().toLowerCase();
-  req.portalReadOnly = !(session.email && session.email === primary);
+  // Only an authorized signer — the primary contact or the designated second
+  // signer — can sign / make binding decisions. Everyone else who verified
+  // (other additional emails) is read-only.
+  req.portalReadOnly = !(session.email && signerEmails(c).includes(session.email));
   return c;
 }
 
@@ -1357,9 +1363,10 @@ app.get('/api/portal/:token', (req, res) => {
   res.json(publicClientView(c, { readOnly: req.portalReadOnly }));
 });
 
-// Refuse binding actions on a read-only session (view link or additional contact).
+// Refuse binding actions on a read-only session (view link or a non-signer
+// additional contact). Both authorized signers pass.
 function requirePrimary(req, res) {
-  if (req.portalReadOnly) { res.status(403).json({ error: 'This is a view-only link — only the main contact can take this action.' }); return false; }
+  if (req.portalReadOnly) { res.status(403).json({ error: 'This is a view-only link — only an authorized signer can take this action.' }); return false; }
   return true;
 }
 

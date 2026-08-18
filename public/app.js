@@ -356,8 +356,9 @@ window.editClientInfo = function (id) {
   modal(`<h2>Edit Client Info</h2>
     <label class="fld">Client Name<input type="text" id="eName" value="${esc(c.name)}"></label>
     <label class="fld">Address<input type="text" id="eAddr" value="${esc(c.address)}"></label>
-    <label class="fld">Email<input type="email" id="eEmail" value="${esc(c.email)}"></label>
-    <label class="fld">Additional portal emails<input type="text" id="eAddlEmails" value="${esc((c.additionalEmails || []).join(', '))}" placeholder="spouse@email.com, builder@email.com"><span class="muted" style="font-weight:400;font-size:12px">Comma-separated. They also receive the portal link and can log in with their own email.</span></label>
+    <label class="fld">Email <span class="muted" style="font-weight:400;font-size:12px">— primary authorized signer</span><input type="email" id="eEmail" value="${esc(c.email)}"></label>
+    <label class="fld">Second authorized signer email<input type="email" id="eSigner2" value="${esc(c.secondSignerEmail || '')}" placeholder="cosigner@email.com"><span class="muted" style="font-weight:400;font-size:12px">Optional. This person can log in and sign the contract too — either signer can sign.</span></label>
+    <label class="fld">Additional portal emails<input type="text" id="eAddlEmails" value="${esc((c.additionalEmails || []).join(', '))}" placeholder="spouse@email.com, builder@email.com"><span class="muted" style="font-weight:400;font-size:12px">Comma-separated. They also receive the portal link and can log in, but view-only (cannot sign).</span></label>
     <label class="fld">Phone<input type="tel" id="ePhone" value="${esc(c.phone)}"></label>
     <label class="fld">Status<select id="eStatus">${Object.entries(statusLabel).map(([k, v]) => `<option value="${k}" ${c.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     <label class="fld">Target Finish Date<input type="date" id="eFinish" value="${c.targetFinishDate || ''}"></label>
@@ -371,7 +372,7 @@ window.editClientInfo = function (id) {
 window.saveClientInfo = async function (id) {
   const additionalEmails = ($('#eAddlEmails').value || '').split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
   try {
-    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, additionalEmails, phone: $('#ePhone').value, status: $('#eStatus').value, targetFinishDate: $('#eFinish').value || null });
+    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, secondSignerEmail: ($('#eSigner2').value || '').trim(), additionalEmails, phone: $('#ePhone').value, status: $('#eStatus').value, targetFinishDate: $('#eFinish').value || null });
     await reload(); closeModal(); route(); toast('Saved');
   } catch (e) { toast(e.message, true); }
 };
@@ -1031,6 +1032,7 @@ function tContract(c) {
         <h2>Contract</h2>
         <p>Quote total: <b class="money">${money(total)}</b>${c._coTotal ? ` &nbsp;+ COs <b class="money">${money(c._coTotal)}</b> = <b class="money">${money(total + c._coTotal)}</b>` : ''}</p>
         <p class="muted">Sent: ${c.contract.sentAt ? fmtDate(c.contract.sentAt) : 'not yet'} · Signed: ${c.contract.signedAt ? fmtDate(c.contract.signedAt) + ' (' + c.contract.signedMethod + (c.contract.depositMethod ? ', deposit by ' + c.contract.depositMethod : '') + ')' : 'not yet'}</p>
+        <p class="muted" style="font-size:12px">Authorized signer${c.secondSignerEmail ? 's' : ''}: ${[c.email, c.secondSignerEmail].filter(Boolean).map(esc).join(' · ') || '<span style="color:var(--bad,#c0392b)">no email on file</span>'} — <a href="#" onclick="editClientInfo('${c.id}');return false;">edit</a>. Either can sign in the portal.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <a class="btn secondary" href="/api/clients/${c.id}/contract.pdf" target="_blank">⬇ Preview Contract PDF</a>
           <button class="btn secondary" onclick="sendContract('${c.id}')">📧 Email PDF to Client</button>
