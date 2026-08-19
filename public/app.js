@@ -390,7 +390,13 @@ window.startOverProject = async function (id) {
 
 /* ---------- Specs tab ---------- */
 function tSpecs(c) {
-  const s = c.specs, dis = c.specsLocked ? 'disabled' : '';
+  const s = c.specs;
+  // After the contract is signed, build DETAILS stay editable (specs-only — the
+  // server records a change history and does not re-price), but PRICE inputs lock;
+  // pricing changes go through Change Orders.
+  const dis = '';
+  const pdis = c.specsLocked ? 'disabled' : '';
+  window._specsLocked = !!c.specsLocked;
   const pb = s.poolBase || {}, spa = s.spaBase || {}, fl = s.fireLounge || {}, wf = s.waterFeature || {}, cp = s.coldPlunge || {}, ff = s.fireFeature || {};
   const ss = pb.sunShelf || {}, ls = pb.ledgeSeating || {}, sp = pb.spillover || {};
   const sumItems = arr => (arr || []).reduce((a, x) => a + (Number(x.price) || 0), 0);
@@ -402,7 +408,7 @@ function tSpecs(c) {
     + (cp.included ? (Number(cp.price) || 0) + sumItems(cp.items) : 0)
     + (ff.included ? (Number(ff.price) || 0) : 0)
     + sumItems(s.addOns);
-  const price = (idAttr, val) => `<label class="fld" style="max-width:170px">Price ($)<input type="number" step="0.01" min="0" id="${idAttr}" value="${val || ''}" ${dis} oninput="spQuote()"></label>`;
+  const price = (idAttr, val) => `<label class="fld" style="max-width:170px">Price ($)<input type="number" step="0.01" min="0" id="${idAttr}" value="${val || ''}" ${pdis} oninput="spQuote()"></label>`;
   const incHead = (incId, label, priceId, inc, val) => `
     <div class="row" style="justify-content:space-between;align-items:center">
       <label class="check" style="margin:0"><input type="checkbox" id="${incId}" ${inc ? 'checked' : ''} ${dis} onchange="spQuote()"> Include ${label}</label>
@@ -419,7 +425,7 @@ function tSpecs(c) {
     <div class="row" data-subitem style="align-items:flex-end">
       <label class="fld grow">Item<input type="text" class="subitem-label" value="${esc(it.label)}" placeholder="e.g. Heater" ${dis}></label>
       <label class="fld grow">Details<input type="text" class="subitem-value" value="${esc(it.value)}" ${dis}></label>
-      <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="subitem-price" value="${it.price || ''}" ${dis} oninput="spQuote()"></label>
+      <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="subitem-price" value="${it.price || ''}" ${pdis} oninput="spQuote()"></label>
       ${!c.specsLocked ? '<button class="btn danger small" style="margin-bottom:12px" onclick="this.closest(\'[data-subitem]\').remove();spQuote()">✕</button>' : ''}
     </div>`;
   const subItemsBlock = (secKey, items) => `
@@ -430,8 +436,10 @@ function tSpecs(c) {
   $('#tabBody').innerHTML = `
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;background:var(--blue-soft)">
       <h2 style="margin:0">Price Quote</h2>
-      <span class="total-line" id="spQuoteEl">${money(initial)}</span>
+      <span class="total-line" id="spQuoteEl">${money(c.specsLocked ? (c._quote || 0) : initial)}</span>
     </div>
+    ${c.specsLocked ? `<div class="banner info" style="margin-top:12px">🔒 Contract signed — you can edit <b>build details</b> here (they update the Overview, crew view and portal), but the <b>contract total is locked</b>. Enter pricing changes as <a href="#/client/${c.id}/changes">Change Orders</a>. Every detail change is logged below.</div>
+    ${specHistoryCard(c)}` : ''}
 
     <div class="row" style="align-items:flex-start">
     <div style="flex:2.2;min-width:440px">
@@ -515,15 +523,35 @@ function tSpecs(c) {
         <div class="row" data-addon style="align-items:flex-end">
           <label class="fld grow">Add-on<input type="text" class="ao-label" value="${esc(a.label)}" ${dis}></label>
           <label class="fld grow">Details<input type="text" class="ao-value" value="${esc(a.value)}" ${dis}></label>
-          <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="ao-price" value="${a.price || ''}" ${dis} oninput="spQuote()"></label>
+          <label class="fld" style="max-width:160px">Price ($)<input type="number" step="0.01" min="0" class="ao-price" value="${a.price || ''}" ${pdis} oninput="spQuote()"></label>
           ${!c.specsLocked ? '<button class="btn danger small" style="margin-bottom:12px" onclick="this.closest(\'[data-addon]\').remove();spQuote()">✕</button>' : ''}
         </div>`).join('')}</div>
       ${!c.specsLocked ? '<button class="btn secondary small" onclick="addAddonRow()">＋ Add new field</button>' : ''}
     </div>
-    ${!c.specsLocked ? `<button class="btn" onclick="saveSpecs('${c.id}')">💾 Save Pool Specs</button>` : '<p class="muted">🔒 Locked — contract signed. Use Change Orders for modifications.</p>'}
+    <button class="btn" onclick="saveSpecs('${c.id}')">💾 ${c.specsLocked ? 'Save Spec Changes' : 'Save Pool Specs'}</button>
     </div>
     <div style="flex:1;min-width:280px">${specNotesCard(c)}</div>
     </div>`;
+}
+// Change history shown on the Pool Specs tab after signing: every post-signing
+// build-detail edit (from -> to), plus the original spec summary snapshotted at
+// signing. Pricing changes are not here — those are Change Orders.
+function specHistoryCard(c) {
+  const orig = c.specsSignedSummary || [];
+  const hist = c.specHistory || [];
+  return `<div class="card">
+    <h2 style="margin:0 0 4px">📜 Spec Change History</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 10px">Build-detail changes since the contract was signed.</p>
+    ${hist.length ? hist.map(h => `
+      <div style="border-left:3px solid var(--blue-soft);padding:0 0 6px 10px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--blue-dark)">${fmtDate(h.at)}</div>
+        ${(h.changes || []).map(ch => `<div style="font-size:13px">${esc(ch.label)}: <span class="muted" style="text-decoration:line-through">${esc(ch.from)}</span> → <b>${esc(ch.to)}</b></div>`).join('')}
+      </div>`).join('') : '<p class="muted" style="margin:0 0 10px">No build-detail changes since signing.</p>'}
+    ${orig.length ? `<details style="margin-top:4px"><summary style="cursor:pointer;font-size:13px;color:var(--mid)">Original specs at signing</summary>
+      <div style="margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px">
+        ${orig.map(([k, v]) => `<div class="muted">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
+      </div></details>` : ''}
+  </div>`;
 }
 // Second column of the Pool Specs tab: a dated notes log. Adding/deleting a note
 // saves immediately and works even after the specs are locked (it's a running
@@ -562,6 +590,9 @@ window.delSpecNote = async function (id, noteId) {
   catch (e) { toast(e.message, true); }
 };
 window.spQuote = function () {
+  // After signing the contract total is locked (pricing goes through Change Orders),
+  // so don't let live edits rewrite the displayed total.
+  if (window._specsLocked) return;
   const v = i => { const el = document.getElementById(i); return el ? Number(el.value) || 0 : 0; };
   const on = i => { const el = document.getElementById(i); return el ? el.checked : false; };
   const sub = id => { const el = document.getElementById(id); return el ? [...el.querySelectorAll('.subitem-price')].reduce((a, i) => a + (Number(i.value) || 0), 0) : 0; };
@@ -621,7 +652,8 @@ window.saveSpecs = async function (id) {
     equipmentPad: val('pb_equippad'),
     addOns: [...document.querySelectorAll('[data-addon]')].map(r => ({ label: r.querySelector('.ao-label').value, value: r.querySelector('.ao-value').value, price: Number(r.querySelector('.ao-price').value) || 0 })).filter(a => a.label.trim()),
   };
-  try { await api('PUT', '/api/clients/' + id, { specs }); await reload(); toast('Pool specs saved — quote updated on Finance'); route(); }
+  const wasLocked = (client(id) || {}).specsLocked;
+  try { await api('PUT', '/api/clients/' + id, { specs }); await reload(); toast(wasLocked ? 'Spec changes saved — build details updated (contract total unchanged)' : 'Pool specs saved — quote updated on Finance'); route(); }
   catch (e) { toast(e.message, true); }
 };
 

@@ -130,6 +130,25 @@ function poolSpecsSummary(c) {
   return specsSummary;
 }
 
+// After a contract is signed the specs are edit-locked for pricing, but build
+// details may still change (e.g. a change order enlarges the pool). Diff the
+// human-readable spec summary before/after and log what changed so the original
+// is always visible. Prices/contract total are never touched here.
+function recordSpecChange(c, newSpecs) {
+  const before = new Map(poolSpecsSummary(c).map(([k, v]) => [k, v]));
+  const after = new Map(poolSpecsSummary({ ...c, specs: newSpecs }).map(([k, v]) => [k, v]));
+  const changes = [];
+  for (const k of new Set([...before.keys(), ...after.keys()])) {
+    const from = before.has(k) ? before.get(k) : '—';
+    const to = after.has(k) ? after.get(k) : '—';
+    if (from !== to) changes.push({ label: k, from, to });
+  }
+  if (!changes.length) return;
+  c.specHistory = c.specHistory || [];
+  c.specHistory.unshift({ at: new Date().toISOString(), changes });
+  if (c.specHistory.length > 200) c.specHistory.length = 200;
+}
+
 function publicClientView(c, { readOnly = false } = {}) {
   const quote = store.quoteTotal(c);
   const specsSummary = poolSpecsSummary(c);
@@ -386,13 +405,19 @@ app.post('/api/prospects/from-intake', memUpload.single('file'), wrap(async (req
 app.put('/api/clients/:id', (req, res) => {
   const c = getClient(req, res); if (!c) return;
   const b = req.body;
-  // Specs are frozen once the contract is signed — changes must be change orders.
   if (b.specs !== undefined) {
-    if (c.specsLocked) return res.status(409).json({ error: 'Specs are locked: the contract is signed. Enter this change as a Change Order.' });
-    c.specs = b.specs;
-    // The priced spec sections are the source of truth for the quote: regenerate
-    // the Finance line items so the two totals always match.
-    c.finance = store.specsToFinance(b.specs);
+    if (c.specsLocked) {
+      // Post-signing: build details stay editable, but pricing is frozen. Log what
+      // changed and update the specs WITHOUT re-pricing — the signed contract total
+      // is unchanged; pricing changes go through Change Orders.
+      recordSpecChange(c, b.specs);
+      c.specs = b.specs;
+    } else {
+      c.specs = b.specs;
+      // The priced spec sections are the source of truth for the quote: regenerate
+      // the Finance line items so the two totals always match.
+      c.finance = store.specsToFinance(b.specs);
+    }
   }
   for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'secondSignerEmail', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'disclosures', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
     if (b[k] !== undefined) c[k] = b[k];
@@ -677,6 +702,10 @@ async function finalizeContractSigning(c, { method, depositMethod = null, finish
   c.contract.depositMethod = depositMethod;
   if (finishText && !c.selectedFinishes.includes(finishText)) c.selectedFinishes.push(finishText);
   c.specsLocked = true;
+  // Snapshot the specs as signed, so the "original" is always visible even after
+  // post-signing build-detail edits are logged to specHistory.
+  c.specsSignedSummary = poolSpecsSummary(c);
+  if (!Array.isArray(c.specHistory)) c.specHistory = [];
   c.status = 'active';
 
   // Default the projected completion to 3 months out — unless one was already set,
