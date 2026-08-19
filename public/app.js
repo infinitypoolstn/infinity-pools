@@ -1049,15 +1049,29 @@ function tContract(c) {
           ? `<p style="margin-top:10px">Master invoice: <a href="${c.quickbooks.invoiceUrl}" target="_blank">open in QuickBooks ↗</a></p>
              <p class="muted" style="font-size:12px">Legacy single invoice for the full contract; phase draws are partial payments against it.</p>`
           : c.quickbooks.estimateUrl
-            ? `<p style="margin-top:10px">Estimate: <a href="${c.quickbooks.estimateUrl}" target="_blank">open in QuickBooks ↗</a></p>
+            ? `<p style="margin-top:10px">Estimate: <a href="${c.quickbooks.estimateUrl}" target="_blank">open in QuickBooks ↗</a>${c.quickbooks.qbCustomerName ? ` <span class="muted">· under Project <b>${esc(c.quickbooks.qbCustomerName)}</b></span>` : ''}</p>
                <p class="muted" style="font-size:12px">Full contract total as a QuickBooks estimate. Each phase draw is billed as a progress invoice against it when the phase goes active.</p>
                ${(() => { const inv = (c.phases || []).filter(p => p.qbInvoiceUrl); return inv.length
                  ? `<div style="margin-top:8px"><b style="font-size:13px">Progress invoices</b>${inv.map(p => `<div style="font-size:13px;margin-top:3px">${esc(p.name)} <span class="muted">· ${p.drawPct}%</span> — <a href="${p.qbInvoiceUrl}" target="_blank">open ↗</a>${p.paymentReceivedAt ? ' <span style="color:var(--good,#1f8a4c)">✓ paid</span>' : ''}</div>`).join('')}</div>`
                  : '<p class="muted" style="font-size:12px;margin-top:6px">No progress invoices yet — the first is created when a phase draw is requested.</p>'; })()}`
             : S.quickbooksConnected
-              ? `${c.contract.signedAt
-                  ? `<div class="banner warn" style="margin-top:10px">No QuickBooks estimate yet — this usually means the QuickBooks connection needs attention.</div>
-                     <button class="btn" style="margin-top:10px" onclick="createQbEstimate('${c.id}')">Create QB Customer &amp; Estimate</button>`
+              ? `<div style="margin-top:10px">
+                   <h3 style="margin:0 0 4px;font-size:14px">QuickBooks Project</h3>
+                   <p class="muted" style="font-size:12px;margin:0 0 6px">Attach this job to an existing QuickBooks Project so the estimate &amp; phase invoices roll up under it. Set this <b>before</b> the estimate is created. Otherwise a new customer named "${esc(c.name)}" is created.</p>
+                   <p style="font-size:13px;margin:0 0 8px">Currently: <b>${c.quickbooks.qbCustomerName ? esc(c.quickbooks.qbCustomerName) : 'New customer (' + esc(c.name) + ')'}</b></p>
+                   <div class="row" style="align-items:center;gap:8px">
+                     <select class="input grow" id="qbProjSel_${c.id}" style="max-width:220px"><option value="">— Load your Projects —</option></select>
+                     <button class="btn secondary small" onclick="loadQbProjects('${c.id}')">↻ Load</button>
+                     <button class="btn small" onclick="attachQbProject('${c.id}')">Attach</button>
+                   </div>
+                   <div class="row" style="align-items:center;gap:8px;margin-top:6px">
+                     <input class="input grow" id="qbProjRef_${c.id}" placeholder="…or paste Project name / ID" style="max-width:220px">
+                     ${c.quickbooks.qbCustomerId ? `<button class="btn secondary small" onclick="detachQbProject('${c.id}')">Use new customer</button>` : ''}
+                   </div>
+                 </div>
+                 ${c.contract.signedAt
+                  ? `<div class="banner warn" style="margin-top:12px">No QuickBooks estimate yet.</div>
+                     <button class="btn" style="margin-top:8px" onclick="createQbEstimate('${c.id}')">Create QB Estimate</button>`
                   : ''}
                  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--blue-soft)">
                    <h3 style="margin:0 0 4px;font-size:14px">Already invoiced in QuickBooks?</h3>
@@ -1146,11 +1160,42 @@ window.createQbInvoice = async function (id) {
   } catch (e) { toast(e.message, true); }
 };
 window.createQbEstimate = async function (id) {
-  if (!confirm('Create QuickBooks customer and estimate now?')) return;
+  if (!confirm('Create QuickBooks estimate now?')) return;
   try {
     await api('POST', `/api/clients/${id}/quickbooks/create-estimate`);
     await reload(); route();
     toast('QuickBooks estimate created — phase draws will invoice against it');
+  } catch (e) { toast(e.message, true); }
+};
+window.loadQbProjects = async function (id) {
+  const sel = document.getElementById('qbProjSel_' + id);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const r = await api('GET', '/api/quickbooks/projects');
+    const list = r.projects || [];
+    sel.innerHTML = list.length
+      ? '<option value="">— Select a Project —</option>' + list.map(p => `<option value="${p.id}">${esc(p.name || '')}</option>`).join('')
+      : '<option value="">No Projects found — paste one below</option>';
+  } catch (e) { sel.innerHTML = '<option value="">— Load your Projects —</option>'; toast(e.message, true); }
+};
+window.attachQbProject = async function (id) {
+  const sel = document.getElementById('qbProjSel_' + id);
+  const ref = document.getElementById('qbProjRef_' + id);
+  const customerId = (sel && sel.value) || '';
+  const paste = ((ref && ref.value) || '').trim();
+  if (!customerId && !paste) { toast('Pick a Project or paste its name/ID', true); return; }
+  try {
+    const r = await api('POST', `/api/clients/${id}/quickbooks/attach-project`, customerId ? { customerId } : { ref: paste });
+    await reload(); route();
+    toast(r.attached ? ('Attached to ' + r.attached.name) : 'Attached');
+  } catch (e) { toast(e.message, true); }
+};
+window.detachQbProject = async function (id) {
+  try {
+    await api('POST', `/api/clients/${id}/quickbooks/attach-project`, {});
+    await reload(); route();
+    toast('Reverted to a new QuickBooks customer');
   } catch (e) { toast(e.message, true); }
 };
 window.linkQbInvoice = async function (id) {

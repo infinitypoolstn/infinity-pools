@@ -875,6 +875,33 @@ app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => 
   res.json({ client: c });
 }));
 
+// List the QuickBooks Projects (sub-customers) the admin can attach a job to.
+app.get('/api/quickbooks/projects', wrap(async (req, res) => {
+  if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
+  res.json({ projects: await quickbooks.listProjects() });
+}));
+
+// Attach this job to an existing QuickBooks Project/customer (so the estimate and
+// phase invoices roll up under it), or clear it to auto-create a new customer.
+// Must be set BEFORE the estimate is created.
+app.post('/api/clients/:id/quickbooks/attach-project', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  if (c.testMode) return res.status(400).json({ error: 'This is a test job — invoicing is disabled.' });
+  if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
+  if (c.quickbooks.estimateId) return res.status(400).json({ error: 'The QuickBooks estimate already exists, so the customer/Project is locked. Attach a Project before the estimate is created.' });
+  const ref = String(req.body.customerId || req.body.ref || '').trim();
+  if (!ref) { // clear -> back to auto-created new customer
+    c.quickbooks.qbCustomerId = null; c.quickbooks.qbCustomerName = '';
+    store.save();
+    return res.json({ client: c, attached: null });
+  }
+  const resolved = await quickbooks.resolveCustomer(ref);
+  c.quickbooks.qbCustomerId = resolved.id;
+  c.quickbooks.qbCustomerName = resolved.name;
+  store.save();
+  res.json({ client: c, attached: resolved });
+}));
+
 // Create the QuickBooks estimate for the full contract (progressive invoicing).
 // Phase draws are billed as progress invoices against it as each phase goes active.
 app.post('/api/clients/:id/quickbooks/create-estimate', wrap(async (req, res) => {
