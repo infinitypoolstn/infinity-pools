@@ -1047,21 +1047,27 @@ function tContract(c) {
         ${S.quickbooksConnected ? '<span class="chip active">Connected</span>' : '<p class="muted">Not connected — payment links can still be pasted per phase below. Connect in <a href="#/settings">Settings</a>.</p>'}
         ${c.quickbooks.invoiceUrl
           ? `<p style="margin-top:10px">Master invoice: <a href="${c.quickbooks.invoiceUrl}" target="_blank">open in QuickBooks ↗</a></p>
-             <p class="muted" style="font-size:12px">One invoice for the full contract. Each phase draw is requested as a partial payment against it — no additional invoices are created.</p>`
-          : S.quickbooksConnected
-            ? `${c.contract.signedAt
-                ? `<div class="banner warn" style="margin-top:10px">Master invoice was not created — this usually means the QuickBooks connection needs attention.</div>
-                   <button class="btn" style="margin-top:10px" onclick="createQbInvoice('${c.id}')">Create QB Customer &amp; Invoice</button>`
-                : ''}
-               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--blue-soft)">
-                 <h3 style="margin:0 0 4px;font-size:14px">Already invoiced in QuickBooks?</h3>
-                 <p class="muted" style="font-size:12px;margin:0 0 8px">For older jobs invoiced directly in QuickBooks, paste the invoice number (or its ID) to link it here. Phase draws still use its pay link; payments are marked manually.</p>
-                 <div class="row" style="align-items:center">
-                   <input class="input grow" id="qbLink_${c.id}" placeholder="Invoice # (e.g. 1037)" style="max-width:190px">
-                   <button class="btn secondary" onclick="linkQbInvoice('${c.id}')">🔗 Link invoice</button>
-                 </div>
-               </div>`
-            : ''}`}
+             <p class="muted" style="font-size:12px">Legacy single invoice for the full contract; phase draws are partial payments against it.</p>`
+          : c.quickbooks.estimateUrl
+            ? `<p style="margin-top:10px">Estimate: <a href="${c.quickbooks.estimateUrl}" target="_blank">open in QuickBooks ↗</a></p>
+               <p class="muted" style="font-size:12px">Full contract total as a QuickBooks estimate. Each phase draw is billed as a progress invoice against it when the phase goes active.</p>
+               ${(() => { const inv = (c.phases || []).filter(p => p.qbInvoiceUrl); return inv.length
+                 ? `<div style="margin-top:8px"><b style="font-size:13px">Progress invoices</b>${inv.map(p => `<div style="font-size:13px;margin-top:3px">${esc(p.name)} <span class="muted">· ${p.drawPct}%</span> — <a href="${p.qbInvoiceUrl}" target="_blank">open ↗</a>${p.paymentReceivedAt ? ' <span style="color:var(--good,#1f8a4c)">✓ paid</span>' : ''}</div>`).join('')}</div>`
+                 : '<p class="muted" style="font-size:12px;margin-top:6px">No progress invoices yet — the first is created when a phase draw is requested.</p>'; })()}`
+            : S.quickbooksConnected
+              ? `${c.contract.signedAt
+                  ? `<div class="banner warn" style="margin-top:10px">No QuickBooks estimate yet — this usually means the QuickBooks connection needs attention.</div>
+                     <button class="btn" style="margin-top:10px" onclick="createQbEstimate('${c.id}')">Create QB Customer &amp; Estimate</button>`
+                  : ''}
+                 <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--blue-soft)">
+                   <h3 style="margin:0 0 4px;font-size:14px">Already invoiced in QuickBooks?</h3>
+                   <p class="muted" style="font-size:12px;margin:0 0 8px">For older jobs invoiced directly in QuickBooks, paste the invoice number (or its ID) to link it here. Phase draws use its pay link; payments are marked manually.</p>
+                   <div class="row" style="align-items:center">
+                     <input class="input grow" id="qbLink_${c.id}" placeholder="Invoice # (e.g. 1037)" style="max-width:190px">
+                     <button class="btn secondary" onclick="linkQbInvoice('${c.id}')">🔗 Link invoice</button>
+                   </div>
+                 </div>`
+              : ''}`}
       </div>
     </div>
     <div class="card">
@@ -1137,6 +1143,14 @@ window.createQbInvoice = async function (id) {
     await api('POST', `/api/clients/${id}/quickbooks/create-invoice`);
     await reload(); route();
     toast('QuickBooks customer and master invoice created successfully');
+  } catch (e) { toast(e.message, true); }
+};
+window.createQbEstimate = async function (id) {
+  if (!confirm('Create QuickBooks customer and estimate now?')) return;
+  try {
+    await api('POST', `/api/clients/${id}/quickbooks/create-estimate`);
+    await reload(); route();
+    toast('QuickBooks estimate created — phase draws will invoice against it');
   } catch (e) { toast(e.message, true); }
 };
 window.linkQbInvoice = async function (id) {
