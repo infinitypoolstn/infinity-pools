@@ -101,6 +101,20 @@
   .file .fmeta { padding:9px 10px; }
   .file .fname { font-size:12.5px; font-weight:700; line-height:1.3; word-break:break-word; }
   .file .fcat { font-size:11px; color:var(--mid); margin-top:3px; }
+  /* Photo gallery */
+  .gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px; }
+  .photo { aspect-ratio:1; border-radius:10px; overflow:hidden; cursor:pointer; border:1px solid var(--soft); background:var(--pale); }
+  .photo img { width:100%; height:100%; object-fit:cover; display:block; transition:transform .15s; }
+  .photo:hover img { transform:scale(1.05); }
+  /* Lightbox */
+  .lb { display:none; position:fixed; inset:0; background:rgba(9,32,48,.93); z-index:1000; align-items:center; justify-content:center; flex-direction:column; padding:20px; }
+  .lb-img { max-width:92vw; max-height:80vh; object-fit:contain; border-radius:8px; box-shadow:0 10px 44px rgba(0,0,0,.55); }
+  .lb-close { position:absolute; top:12px; right:16px; background:none; border:none; color:#fff; font-size:30px; line-height:1; cursor:pointer; }
+  .lb-nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,.12); border:none; color:#fff; font-size:38px; width:52px; height:74px; border-radius:10px; cursor:pointer; }
+  .lb-nav:hover { background:rgba(255,255,255,.25); }
+  .lb-prev { left:14px; } .lb-next { right:14px; }
+  .lb-bar { margin-top:14px; color:#fff; font-size:14px; display:flex; gap:18px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  .lb-dl { color:#bfe1f6; text-decoration:none; font-weight:700; }
   @media (max-width:640px) {
     .wrap { padding:12px 12px 44px; }
     .card { padding:16px; }
@@ -108,6 +122,9 @@
     .cell { min-height:58px; }
     .item .tm { min-width:52px; }
     .files { grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); }
+    .gallery { grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); }
+    .lb-nav { width:40px; height:60px; font-size:30px; }
+    .lb-img { max-height:72vh; }
   }
 </style>
 </head>
@@ -127,12 +144,22 @@
   <div id="content"><div class="card"><div class="empty">Loading…</div></div></div>
 </div>
 
+<div id="lightbox" class="lb" onclick="if(event.target.id==='lightbox')closeLightbox()">
+  <button class="lb-close" onclick="closeLightbox()" aria-label="Close">✕</button>
+  <button class="lb-nav lb-prev" onclick="lbNav(-1)" aria-label="Previous">‹</button>
+  <img id="lbImg" class="lb-img" alt="">
+  <button class="lb-nav lb-next" onclick="lbNav(1)" aria-label="Next">›</button>
+  <div class="lb-bar"><span id="lbCap"></span> <a id="lbDownload" class="lb-dl" download>⬇ Download</a></div>
+</div>
+
 <script>
 const TOKEN = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
 let DATA = null;
 let tab = 'projects';
 let selectedId = null; // when set, show that project's overview
 let calYM = null;      // {y, m} 0-based month for the calendar grid
+let gallery = [];      // photos for the current project's lightbox
+let lbIndex = 0;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
@@ -208,6 +235,7 @@ function backToList() {
 
 function render() {
   if (!DATA) return;
+  closeLightbox();
   if (selectedId) { $('#content').innerHTML = renderDetail(); return; }
   $('#content').innerHTML = tab === 'schedule' ? renderSchedule() : renderProjects();
 }
@@ -270,6 +298,10 @@ function renderDetail() {
 
   const specs = c.specs || [];
   const files = c.files || [];
+  const photos = files.filter(f => f.isImage);
+  const docs = files.filter(f => !f.isImage);
+  // Populate the lightbox for this project's photos (index matches the grid order).
+  gallery = photos.map(f => ({ url: fileUrl(c.id, f), name: f.name }));
   const checklist = c.checklist || [];
 
   return `
@@ -313,11 +345,20 @@ function renderDetail() {
                      : `<div class="muted">No pool specs entered yet.</div>`}
     </div>
 
-    <div class="card">
+    ${photos.length ? `<div class="card">
+      <h2>📸 Photos</h2>
+      <div class="gallery">${photos.map((f, i) => `<div class="photo" onclick="openLightbox(${i})"><img src="${fileUrl(c.id, f)}" alt="${esc(f.name)}" loading="lazy"></div>`).join('')}</div>
+    </div>` : ''}
+
+    ${docs.length ? `<div class="card">
+      <h2>📎 Documents</h2>
+      <div class="files">${docs.map(f => fileCard(c.id, f)).join('')}</div>
+    </div>` : ''}
+
+    ${!files.length ? `<div class="card">
       <h2>📎 Files</h2>
-      ${files.length ? `<div class="files">${files.map(f => fileCard(c.id, f)).join('')}</div>`
-                     : `<div class="muted">No plans, renderings, or permits uploaded yet.</div>`}
-    </div>
+      <div class="muted">No plans, renderings, or photos uploaded yet.</div>
+    </div>` : ''}
 
     <div class="card">
       <h2>📅 Upcoming for this project</h2>
@@ -325,18 +366,52 @@ function renderDetail() {
     </div>`;
 }
 
+function fileUrl(clientId, f) {
+  return '/api/employee/' + encodeURIComponent(TOKEN) + '/files/' + encodeURIComponent(clientId) + '/' + encodeURIComponent(f.id);
+}
 function fileCard(clientId, f) {
-  const url = '/api/employee/' + encodeURIComponent(TOKEN) + '/files/' + encodeURIComponent(clientId) + '/' + encodeURIComponent(f.id);
-  const icon = f.isImage ? '🖼' : (/\.pdf$/i.test(f.name) ? '📄' : '📁');
-  const thumb = f.isImage ? `<img src="${url}" alt="${esc(f.name)}" loading="lazy">` : icon;
+  const url = fileUrl(clientId, f);
+  const icon = /\.pdf$/i.test(f.name) ? '📄' : '📁';
   return `<a class="file" href="${url}" target="_blank" rel="noopener">
-    <div class="thumb">${thumb}</div>
+    <div class="thumb">${icon}</div>
     <div class="fmeta">
       <div class="fname">${esc(f.name)}</div>
       <div class="fcat">${esc(f.category)}</div>
     </div>
   </a>`;
 }
+
+/* ---------------- Photo lightbox ---------------- */
+function openLightbox(i) {
+  if (!gallery.length) return;
+  lbIndex = i; renderLb();
+  document.getElementById('lightbox').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+  document.body.style.overflow = '';
+}
+function lbNav(delta) {
+  if (!gallery.length) return;
+  lbIndex = (lbIndex + delta + gallery.length) % gallery.length;
+  renderLb();
+}
+function renderLb() {
+  const g = gallery[lbIndex]; if (!g) return;
+  document.getElementById('lbImg').src = g.url;
+  document.getElementById('lbImg').alt = g.name;
+  document.getElementById('lbCap').textContent = g.name + '  (' + (lbIndex + 1) + ' / ' + gallery.length + ')';
+  const dl = document.getElementById('lbDownload'); dl.href = g.url; dl.setAttribute('download', g.name);
+  document.querySelector('.lb-prev').style.display = gallery.length > 1 ? '' : 'none';
+  document.querySelector('.lb-next').style.display = gallery.length > 1 ? '' : 'none';
+}
+document.addEventListener('keydown', e => {
+  if (document.getElementById('lightbox').style.display !== 'flex') return;
+  if (e.key === 'Escape') closeLightbox();
+  else if (e.key === 'ArrowLeft') lbNav(-1);
+  else if (e.key === 'ArrowRight') lbNav(1);
+});
 
 /* ---------------- Schedule tab ---------------- */
 function renderSchedule() {
