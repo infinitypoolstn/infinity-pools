@@ -296,7 +296,7 @@ function renderDetail() {
     .filter(it => it.date && (it.date <= horizonStr) && (it.date >= today || (it.kind === 'task' && it.date < today)))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '99').localeCompare(b.time || '99'));
 
-  const specs = c.specs || [];
+  const specs = (c.equipmentPad ? [...(c.specs || []), ['Equipment pad', c.equipmentPad]] : (c.specs || []));
   const files = c.files || [];
   const photos = files.filter(f => f.isImage);
   const docs = files.filter(f => !f.isImage);

@@ -260,6 +260,7 @@ function employeeClientView(c) {
     checklist: (c.checklist || []).map(it => ({ id: it.id, label: it.label, done: !!it.done, completedAt: it.completedAt || null })),
     // Pool Specs — sizes only, never pricing.
     specs: poolSpecsSummary(c),
+    equipmentPad: (c.specs && c.specs.equipmentPad) || '',
     // Operational files only (plans, renderings, permits) — download via the
     // token-gated employee file route below.
     files: (c.files || [])

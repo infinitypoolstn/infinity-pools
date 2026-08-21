@@ -1387,6 +1387,7 @@ function tOverview(c) {
   sizeRows.push(['Shape', pb.shape === 'freeform' ? ('Freeform' + (pb.freeform ? ' — ' + pb.freeform : '')) : 'Geometric']);
   if (pb.size) sizeRows.push(['Pool size', pb.size]);
   if (pb.depth) sizeRows.push(['Depth', pb.depth]);
+  if (sp.equipmentPad) sizeRows.push(['Equipment pad', sp.equipmentPad]);
   if (ssf.included) sizeRows.push(['Sun Shelf', ssf.details || 'Included']);
   if (spa.included && spa.size) sizeRows.push(['Spa size', spa.size]);
   if (fl.included && fl.size) sizeRows.push(['Fire Lounge size', fl.size]);
