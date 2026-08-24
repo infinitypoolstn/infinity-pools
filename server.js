@@ -976,16 +976,21 @@ app.post('/api/clients/:id/change-orders', wrap(async (req, res) => {
   store.addAlert(`${c.address}: change order added — "${co.description}" (${alerts.fmtMoney(co.value)}) — awaiting client approval on their portal.`, { clientId: c.id, type: 'change' });
   // Ask the client to review & approve it on their portal (no invoice yet).
   let email = null;
-  if (c.email) {
+  const recipients = clientEmails(c);
+  if (recipients.length) {
+    // Absolute URL (protocol + host) so the link is clickable from an email — a
+    // relative /portal/... path has no base to resolve against in a mail client.
+    const portalUrl = `${req.protocol}://${req.get('host')}/portal/${c.portalToken}`;
     try { email = await mailer.send({
-      to: c.email,
+      to: recipients,
       subject: `Approval needed — change order for ${c.address}`,
       html: `<p>Hi ${c.name.split(' ')[0]},</p>
         <p>We've prepared a change order for your project at <b>${c.address}</b>:</p>
         <p style="margin:10px 0"><b>${co.description}</b><br>
         Amount: <b>${alerts.fmtMoney(co.value)}</b>${co.value < 0 ? ' (credit)' : ''}</p>
         <p>Please review and approve it on your project portal. ${co.value > 0 ? 'Once you approve, we\'ll send your invoice and payment request for this change.' : 'Once you approve, the credit will be applied to your contract.'}</p>
-        <p><a href="/portal/${c.portalToken}" style="display:inline-block;background:#0a5ea8;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Review on your portal</a></p>
+        <p><a href="${portalUrl}" style="display:inline-block;background:#0a5ea8;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Review on your portal</a></p>
+        <p style="font-size:13px;color:#4a6b85;">Or copy this link into your browser:<br>${portalUrl}</p>
         <p>Thank you!<br>Infinity Pools</p>`,
     }); } catch (e) { /* portal approval still works without the email */ }
   }
