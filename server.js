@@ -13,6 +13,7 @@ const alerts = require('./lib/alerts');
 const pebble = require('./lib/pebble-check');
 const contractPdf = require('./lib/contract-pdf');
 const estimatePdf = require('./lib/estimate-pdf');
+const plansPdf = require('./lib/plans-pdf');
 const specIntakePdf = require('./lib/spec-intake-pdf');
 const specIntakeParse = require('./lib/spec-intake-parse');
 const quickbooks = require('./lib/quickbooks');
@@ -639,6 +640,13 @@ app.get('/api/clients/:id/estimate.pdf', wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
   const file = await estimatePdf.generate(c);
   res.download(file, `${c.address.replace(/[^\w ]/g, '')} - Infinity Pools Estimate.pdf`);
+}));
+
+// Plans / Permit spec sheet — scope + pool specs, no pricing, photos, or disclosures.
+app.get('/api/clients/:id/plans.pdf', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const file = await plansPdf.generate(c);
+  res.download(file, `${c.address.replace(/[^\w ]/g, '')} - Infinity Pools Plans Spec Sheet.pdf`);
 }));
 
 // Email the estimate PDF to the client, copying the company admin address so the

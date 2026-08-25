@@ -1437,6 +1437,13 @@ function tOverview(c) {
       <h2 style="margin:0">Project Total</h2>
       <span class="total-line">${money(grand)}</span>
     </div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <h2 style="margin:0 0 2px">📐 Plans Spec Sheet</h2>
+        <p class="muted" style="margin:0;font-size:12px">Scope of work &amp; pool specs for your plans/permit designer — no pricing, photos, or disclosures.</p>
+      </div>
+      <a class="btn secondary" href="/api/clients/${c.id}/plans.pdf" target="_blank">⬇ Download Plans Spec Sheet</a>
+    </div>
     <div class="card">
       <h2 style="margin:0 0 10px">Where we are</h2>
       <div class="row" style="gap:10px;align-items:stretch">
