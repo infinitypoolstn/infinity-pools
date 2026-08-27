@@ -430,10 +430,14 @@ app.put('/api/clients/:id', (req, res) => {
   }
   if (b.costs !== undefined) c.costs = b.costs; // internal — always editable
   if (b.phases !== undefined) {
-    // allow date edits / payment link edits without touching status machine
+    // allow date / proposed-timeline / payment-link edits without touching status machine
     for (const incoming of b.phases) {
       const p = c.phases.find(p => p.key === incoming.key);
-      if (p) { p.dueDate = incoming.dueDate; p.paymentLink = incoming.paymentLink || p.paymentLink; }
+      if (p) {
+        p.dueDate = incoming.dueDate;
+        if (incoming.time !== undefined) p.time = incoming.time;
+        p.paymentLink = incoming.paymentLink || p.paymentLink;
+      }
     }
   }
   store.save();

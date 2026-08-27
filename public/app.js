@@ -1118,11 +1118,12 @@ function tContract(c) {
     </div>
     <div class="card">
       <h2>Build Phases</h2>
-      <table class="tbl"><thead><tr><th>Phase</th><th>Draw</th><th class="right">Amount</th><th>Due Date</th><th>Status</th><th>Payment</th><th></th></tr></thead><tbody>
+      <table class="tbl"><thead><tr><th>Phase</th><th>Proposed Timeline</th><th>Draw</th><th class="right">Amount</th><th>Due Date</th><th>Status</th><th>Payment</th><th></th></tr></thead><tbody>
       ${c.phases.map(p => {
         const amt = total * p.drawPct / 100;
         return `<tr style="${p.status === 'active' ? 'background:var(--blue-pale)' : ''}">
-          <td><b>${esc(p.name)}</b><div class="muted">${esc(p.time)}</div></td>
+          <td><b>${esc(p.name)}</b></td>
+          <td><input type="text" class="input" style="width:130px;padding:5px" value="${esc(p.time)}" placeholder="e.g. Weeks 3-5" onchange="setPhaseTime('${c.id}','${p.key}',this.value)"></td>
           <td>${p.drawPct}%</td>
           <td class="right money">${p.drawPct ? money(amt) : '—'}</td>
           <td><input type="date" class="input" style="width:150px;padding:5px" value="${p.dueDate || ''}" onchange="setPhaseDue('${c.id}','${p.key}',this.value)"></td>
@@ -1290,6 +1291,11 @@ window.setPhaseDue = async function (id, key, val) {
   const c = client(id);
   await api('PUT', '/api/clients/' + id, { phases: c.phases.map(p => p.key === key ? { ...p, dueDate: val } : p) });
   await reload(); toast('Due date saved');
+};
+window.setPhaseTime = async function (id, key, val) {
+  const c = client(id);
+  await api('PUT', '/api/clients/' + id, { phases: c.phases.map(p => p.key === key ? { ...p, time: val } : p) });
+  await reload(); toast('Proposed timeline saved');
 };
 window.saveSelections = async function (id) {
   try {
