@@ -188,7 +188,11 @@ function recordSpecChange(c, newSpecs) {
 
 function publicClientView(c, { readOnly = false } = {}) {
   const quote = store.quoteTotal(c);
-  const specsSummary = poolSpecsSummary(c);
+  // The client portal hides operational details the homeowner doesn't need:
+  // LED lights, jet counts, and the equipment pad location. (These still show on
+  // the admin Overview and the Employee View, which use the full summary.)
+  const specsSummary = poolSpecsSummary(c).filter(([label]) =>
+    !/LED Lights|Number of Jets|Equipment Pad Location/i.test(label));
   return {
     specsSummary,
     name: c.name, address: c.address,
