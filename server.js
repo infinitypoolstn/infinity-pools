@@ -109,26 +109,62 @@ function siblingProjects(c) {
 // Strip internal-only data before anything client-facing is built from a record.
 // readOnly = true for the shareable view link and for non-primary (additional)
 // contacts: they see everything but can't sign or make binding decisions.
-// Pool Specs overview as [label, value] pairs — sizes only, never any pricing.
-// Mirrors the admin Overview tab's size summary; shared by the client portal and
-// the Employee View.
+// Pool Specs overview as [label, value] pairs — every populated field, never any
+// pricing. Shared by the admin Overview tab, the client portal, and the Employee
+// View, so all three show the same complete picture. Empty fields are skipped.
 function poolSpecsSummary(c) {
   const _s = c.specs || {}, _pb = _s.poolBase || {}, _spa = _s.spaBase || {}, _fl = _s.fireLounge || {};
   const _wf = _s.waterFeature || {}, _cp = _s.coldPlunge || {}, _ff = _s.fireFeature || {};
   const _ss = _pb.sunShelf || {}, _sp = _pb.spillover || {}, _lg = _pb.ledgeSeating || {};
-  const specsSummary = [];
-  specsSummary.push(['Shape', _pb.shape === 'freeform' ? ('Freeform' + (_pb.freeform ? ' — ' + _pb.freeform : '')) : 'Geometric']);
-  if (_pb.size) specsSummary.push(['Pool Size', _pb.size]);
-  if (_pb.depth) specsSummary.push(['Depth', _pb.depth]);
-  if (_ss.included) specsSummary.push(['Sun Shelf', _ss.details || 'Included']);
-  if (_spa.included && _spa.size) specsSummary.push(['Spa Size', _spa.size]);
-  if (_fl.included && _fl.size) specsSummary.push(['Fire Lounge Size', _fl.size]);
-  if (_sp.included) specsSummary.push(['Spillover', _sp.details || 'Included']);
-  if (_lg.included) specsSummary.push(['Ledge / Seating', _lg.details || 'Included']);
-  if (_wf.included) specsSummary.push(['Water Feature', _wf.details || 'Included']);
-  if (_cp.included) specsSummary.push(['Cold Plunge', _cp.details || 'Included']);
-  if (_ff.included) specsSummary.push(['Fire Feature', _ff.details || 'Included']);
-  return specsSummary;
+  const rows = [];
+  const add = (label, val) => { const v = (val == null ? '' : String(val)).trim(); if (v) rows.push([label, v]); };
+  // Priced line-items within a section (label + optional details) — never the price.
+  const addItems = (obj, prefix) => (obj.items || []).forEach(it => {
+    if ((it.label || '').trim()) add(prefix ? prefix + ' — ' + it.label : it.label, it.value || 'Included');
+  });
+
+  // Pool Base
+  add('Shape', _pb.shape === 'freeform' ? ('Freeform' + (_pb.freeform ? ' — ' + _pb.freeform : '')) : 'Geometric');
+  add('Pool Size', _pb.size);
+  add('Depth', _pb.depth);
+  add('Number of Jets', _pb.jets);
+  add('LED Lights', _pb.ledLights);
+  if (_ss.included) add('Sun Shelf', _ss.details || 'Included');
+  if (_sp.included) add('Spillover', _sp.details || 'Included');
+  if (_lg.included) add('Ledge / Seating', _lg.details || 'Included');
+  add('Equipment Pad Location', _s.equipmentPad);
+  add('Additional Details', _pb.details);
+  addItems(_pb, 'Pool Base');
+
+  // Spa
+  if (_spa.included) {
+    add('Spa Size', _spa.size);
+    add('Spa — Number of Jets', _spa.jets);
+    add('Spa — LED Lights', _spa.ledLights);
+    add('Spa — Details', _spa.details);
+    addItems(_spa, 'Spa');
+  }
+  // Fire Lounge
+  if (_fl.included) {
+    add('Fire Lounge Size', _fl.size);
+    add('Fire Lounge — Details', _fl.details);
+    addItems(_fl, 'Fire Lounge');
+  }
+  // Water Feature
+  if (_wf.included) add('Water Feature', _wf.details || 'Included');
+  // Cold Plunge
+  if (_cp.included) {
+    add('Cold Plunge', _cp.details || 'Included');
+    add('Cold Plunge — LED Lights', _cp.ledLights);
+    add('Cold Plunge — Additional Details', _cp.additionalDetails);
+    addItems(_cp, 'Cold Plunge');
+  }
+  // Fire Feature
+  if (_ff.included) add('Fire Feature', _ff.details || 'Included');
+  // Add-ons
+  (_s.addOns || []).forEach(a => { if ((a.label || '').trim()) add(a.label, a.value || 'Included'); });
+
+  return rows;
 }
 
 // After a contract is signed the specs are edit-locked for pricing, but build
@@ -259,9 +295,8 @@ function employeeClientView(c) {
     })),
     // Team checklist — read-only status for the crew (they can't toggle it here).
     checklist: (c.checklist || []).map(it => ({ id: it.id, label: it.label, done: !!it.done, completedAt: it.completedAt || null })),
-    // Pool Specs — sizes only, never pricing.
+    // Pool Specs — every populated field, never pricing (equipment pad included).
     specs: poolSpecsSummary(c),
-    equipmentPad: (c.specs && c.specs.equipmentPad) || '',
     // Operational files only (plans, renderings, permits) — download via the
     // token-gated employee file route below.
     files: (c.files || [])
@@ -339,6 +374,7 @@ app.get('/api/bootstrap', (req, res) => {
       _currentPhase: store.currentPhase(c),
       _siteExcavationTotal: store.moduleTotal(c.siteExcavation),
       _landscapingTotal: store.moduleTotal(c.landscaping),
+      _specsSummary: poolSpecsSummary(c),
     })),
   });
 });

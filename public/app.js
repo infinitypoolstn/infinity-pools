@@ -1384,30 +1384,14 @@ const modStatusChip = st => st === 'active'
 // Landscaping), each with pricing and the current step. Include toggles live here.
 function tOverview(c) {
   const se = c.siteExcavation || {}, ls = c.landscaping || {};
-  // Size summary pulled from Pool Specs — the dimensioned fields, shown read-only
-  // on the Pool card (edit them on the Pool Specs tab).
-  const sp = c.specs || {}, pb = sp.poolBase || {}, spa = sp.spaBase || {}, fl = sp.fireLounge || {};
-  const wf = sp.waterFeature || {}, cp = sp.coldPlunge || {}, ff = sp.fireFeature || {};
-  const ssf = pb.sunShelf || {}, spf = pb.spillover || {}, lgf = pb.ledgeSeating || {};
-  const sizeRows = [];
-  sizeRows.push(['Shape', pb.shape === 'freeform' ? ('Freeform' + (pb.freeform ? ' — ' + pb.freeform : '')) : 'Geometric']);
-  if (pb.size) sizeRows.push(['Pool size', pb.size]);
-  if (pb.depth) sizeRows.push(['Depth', pb.depth]);
-  if (sp.equipmentPad) sizeRows.push(['Equipment pad', sp.equipmentPad]);
-  if (ssf.included) sizeRows.push(['Sun Shelf', ssf.details || 'Included']);
-  if (spa.included && spa.size) sizeRows.push(['Spa size', spa.size]);
-  if (fl.included && fl.size) sizeRows.push(['Fire Lounge size', fl.size]);
-  if (spf.included) sizeRows.push(['Spillover', spf.details || 'Included']);
-  if (lgf.included) sizeRows.push(['Ledge / Seating', lgf.details || 'Included']);
-  if (wf.included) sizeRows.push(['Water Feature', wf.details || 'Included']);
-  if (cp.included) sizeRows.push(['Cold Plunge', cp.details || 'Included']);
-  if (ff.included) sizeRows.push(['Fire Feature', ff.details || 'Included']);
-  const hasDims = !!(pb.size || pb.depth || (spa.included && spa.size) || (fl.included && fl.size));
+  // Full Pool Specs summary (every populated field, no pricing), computed server-side
+  // in _specsSummary so the Overview, client portal, and Employee View all match.
+  const sizeRows = c._specsSummary || [];
   const sizeSummary = `
-    <div style="margin-top:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px;max-width:520px">
-      ${sizeRows.map(([k, v]) => `<div class="muted">${k}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
+    <div style="margin-top:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px;max-width:560px">
+      ${sizeRows.map(([k, v]) => `<div class="muted">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
     </div>
-    ${!hasDims ? `<p class="muted" style="margin:8px 0 0;font-size:12px">No sizes entered yet — add them on <a href="#/client/${c.id}/specs">Pool Specs</a>.</p>` : ''}`;
+    ${!sizeRows.length ? `<p class="muted" style="margin:8px 0 0;font-size:12px">No specs entered yet — add them on <a href="#/client/${c.id}/specs">Pool Specs</a>.</p>` : ''}`;
   const poolQuote = Number(c._quote) || 0;
   const seTotal = moduleSum(se), lsTotal = moduleSum(ls);
   const grand = poolQuote + (se.included ? seTotal : 0) + (ls.included ? lsTotal : 0);
