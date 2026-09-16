@@ -341,7 +341,7 @@ function renderDetail() {
 
     <div class="card">
       <h2>🏊 Pool Specs</h2>
-      ${specs.length ? `<table class="spectbl"><tbody>${specs.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>`
+      ${specs.length ? `<table class="spectbl"><tbody>${specs.map(([k, v]) => `<tr><td>${esc(k)}</td><td style="white-space:pre-line">${esc(v)}</td></tr>`).join('')}</tbody></table>`
                      : `<div class="muted">No pool specs entered yet.</div>`}
     </div>
 

@@ -1399,7 +1399,7 @@ function tOverview(c) {
   const sizeRows = c._specsSummary || [];
   const sizeSummary = `
     <div style="margin-top:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px;max-width:560px">
-      ${sizeRows.map(([k, v]) => `<div class="muted">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
+      ${sizeRows.map(([k, v]) => `<div class="muted">${esc(k)}</div><div style="font-weight:600;white-space:pre-line">${esc(v)}</div>`).join('')}
     </div>
     ${!sizeRows.length ? `<p class="muted" style="margin:8px 0 0;font-size:12px">No specs entered yet — add them on <a href="#/client/${c.id}/specs">Pool Specs</a>.</p>` : ''}`;
   const poolQuote = Number(c._quote) || 0;

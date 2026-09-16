@@ -703,7 +703,7 @@ function renderPortal(d) {
       <div style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">
         <div style="flex:1;min-width:240px">
           <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:14px">
-            ${d.specsSummary.map(([k, v]) => `<div style="color:#6b7c8a">${esc(k)}</div><div style="font-weight:600">${esc(v)}</div>`).join('')}
+            ${d.specsSummary.map(([k, v]) => `<div style="color:#6b7c8a">${esc(k)}</div><div style="font-weight:600;white-space:pre-line">${esc(v)}</div>`).join('')}
           </div>
           <p class="muted" style="margin:10px 0 0">📏 All measurements are water to water.</p>
         </div>
