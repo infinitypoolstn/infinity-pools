@@ -492,7 +492,7 @@ function tSpecs(c) {
         <label class="fld grow">Number of Jets<input type="text" id="spa_jets" value="${esc(spa.jets)}" ${dis}></label>
         <label class="fld grow">Hayward Colorlogic 320 LED Lights<input type="text" id="spa_led" value="${esc(spa.ledLights)}" ${dis}></label>
       </div>
-      <div class="row"><label class="fld grow">Additional Details<input type="text" id="spa_det" value="${esc(spa.details)}" ${dis}></label></div>
+      <div class="row"><label class="fld grow">Additional Details<textarea id="spa_det" ${dis} placeholder="Any extra notes about the spa…">${esc(spa.details)}</textarea></label></div>
       ${subItemsBlock('spa', spa.items)}
     </div>
 
