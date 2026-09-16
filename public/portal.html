@@ -97,6 +97,12 @@
   .thumbs { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px; margin-top:8px; }
   .thumbs img { width:100%; height:96px; object-fit:cover; border-radius:10px; border:2px solid var(--soft); cursor:pointer; display:block; transition:transform .15s; }
   .thumbs img:hover { transform:scale(1.04); border-color:var(--future); }
+  /* Option A / Option B tabs when a project has two rendered designs */
+  .opt-tabs { display:flex; gap:8px; margin-top:8px; }
+  .opt-tab { flex:1; background:#fff; color:var(--blue); border:2px solid var(--soft); border-radius:10px; padding:9px 12px; font-weight:700; font-size:14px; cursor:pointer; font-family:inherit; }
+  .opt-tab:hover { border-color:var(--future); }
+  .opt-tab.on { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .opt-tab small { display:block; font-weight:500; font-size:11.5px; opacity:.85; }
   /* lightbox gallery */
   .lb { position:fixed; inset:0; background:rgba(8,24,40,.93); z-index:1000; display:flex; align-items:center; justify-content:center; }
   .lb img { max-width:92vw; max-height:82vh; border-radius:10px; box-shadow:0 12px 60px rgba(0,0,0,.55); }
@@ -246,8 +252,10 @@ let pendingFinish = null;   // color tapped but not yet confirmed
 let finishChanging = false; // true while the client is picking a replacement
 
 // Rendering lightbox gallery state.
-let PORTAL_RENDERS = [];    // [{ url, name }] for the current project
+let PORTAL_RENDERS = [];    // [{ url, name }] for the design option being viewed
 let galleryIdx = 0;
+let renderOpt = 'A';        // which design option's renderings are showing (A or B)
+window.setRenderOpt = function (o) { renderOpt = o; renderPortal(PORTAL_D); };
 window.openGallery = function (i) { galleryIdx = i; renderGallery(); };
 window.galleryNav = function (delta) {
   if (!PORTAL_RENDERS.length) return;
@@ -530,8 +538,15 @@ function renderPortal(d) {
   // Files we've shared are session-gated; <img>/<a> pass the session as ?s=…
   const sid = localStorage.getItem(SESSION_KEY);
   const fileUrl = id => `/api/portal/${token}/files/${id}?s=${encodeURIComponent(sid)}`;
-  const renderings = (d.renderings || []).filter(f => f.isImage);
-  PORTAL_RENDERS = renderings.map(f => ({ url: fileUrl(f.id), name: f.name }));
+  // Renderings are grouped by design option. Tabs only appear once Option B has
+  // at least one image; otherwise it's the plain single gallery.
+  const allRenderings = (d.renderings || []).filter(f => f.isImage);
+  const byOpt = { A: allRenderings.filter(f => f.option !== 'B'), B: allRenderings.filter(f => f.option === 'B') };
+  const hasOptions = byOpt.B.length > 0;
+  if (!hasOptions) renderOpt = 'A';
+  else if (!byOpt[renderOpt].length) renderOpt = byOpt.A.length ? 'A' : 'B';
+  const renderings = hasOptions ? byOpt[renderOpt] : allRenderings;
+  PORTAL_RENDERS = renderings.map(f => ({ url: fileUrl(f.id), name: (hasOptions ? `Option ${renderOpt} · ` : '') + f.name }));
   const sharedFiles = d.sharedFiles || [];
 
   const stepCls = (p, i) => p.status === 'complete' ? 'past' : (p.status === 'active' ? 'current' : 'future');
@@ -692,10 +707,11 @@ function renderPortal(d) {
           </div>
           <p class="muted" style="margin:10px 0 0">📏 All measurements are water to water.</p>
         </div>
-        ${renderings.length ? `
+        ${allRenderings.length ? `
         <div style="flex:1.3;min-width:240px">
           <div style="font-weight:800;color:var(--blue-deep);font-size:15px">🎨 Renderings</div>
-          <p class="muted" style="margin:2px 0 0">Tap a rendering to view it full size.</p>
+          <p class="muted" style="margin:2px 0 0">${hasOptions ? 'Two designs to compare — switch between them below, then tap a rendering to view it full size.' : 'Tap a rendering to view it full size.'}</p>
+          ${hasOptions ? `<div class="opt-tabs">${['A', 'B'].map(o => `<button class="opt-tab ${renderOpt === o ? 'on' : ''}" onclick="setRenderOpt('${o}')">Option ${o}<small>${byOpt[o].length} rendering${byOpt[o].length === 1 ? '' : 's'}</small></button>`).join('')}</div>` : ''}
           <div class="thumbs">${renderings.map((f, i) => `<img loading="lazy" src="${fileUrl(f.id)}" alt="${esc(f.name)}" onclick="openGallery(${i})">`).join('')}</div>
         </div>` : ''}
       </div>

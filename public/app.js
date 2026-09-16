@@ -870,16 +870,18 @@ function tFiles(c) {
         <label class="fld grow">Category<select id="upCat" onchange="upCatChanged()">${S.settings.fileCategories.map(x => `<option>${x}</option>`).join('')}</select></label>
         <label class="fld grow" style="flex:2">Files (multiple allowed)<input type="file" id="upFiles" multiple class="input"></label>
         <label class="fld" id="upAmtWrap" style="display:none;max-width:190px">Invoice total $ (optional)<input type="number" step="0.01" min="0" id="upAmt" placeholder="auto-read from PDF"></label>
+        <label class="fld" id="upOptWrap" style="display:none;max-width:170px">Design option<select id="upOpt"><option value="A">Option A</option><option value="B">Option B</option></select></label>
         <button class="btn" style="margin-bottom:12px" onclick="doUpload('${c.id}')">⬆ Upload</button>
       </div>
       <p class="muted">Plans, pool renderings, permits, material & labor invoices. Check ⭐ on a rendering to use it as the contract cover photo.
+      Renderings are <b>Option A</b> unless you tag them <b>Option B</b> — once any Option B rendering exists, the client portal shows the two designs as separate tabs.
       Invoice uploads automatically add a line to <b>Costs (Internal)</b> — the amount is read from the PDF (or use the box above), and you can adjust it on the Costs tab.</p>
     </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Documents (${c.files.length})</h2>
         <button class="btn secondary small" onclick="emailFiles('${c.id}')">📧 Email selected…</button></div>
       <p class="muted" style="margin:0 0 6px">👁 <b>Client portal:</b> Pool Renderings show automatically once the contract is signed. For any other file, check <b>Show to client</b> to add it to the collapsible files menu on their portal.</p>
-      <table class="tbl" style="margin-top:10px"><thead><tr><th></th><th>File</th><th>Category</th><th>Uploaded</th><th>Cover Photo</th><th>Client Portal</th><th></th></tr></thead><tbody>
+      <table class="tbl" style="margin-top:10px"><thead><tr><th></th><th>File</th><th>Category</th><th>Uploaded</th><th>Rendering</th><th>Client Portal</th><th></th></tr></thead><tbody>
       ${c.files.map(f => {
         const src = `/uploads/${c.id}/${encodeURIComponent(f.storedName)}`;
         const thumb = IMG_RE.test(f.originalName)
@@ -895,7 +897,11 @@ function tFiles(c) {
         <td><div style="display:flex;align-items:center;gap:10px"><div>${thumb}</div><div><b>${esc(f.originalName)}</b><div class="muted">${(f.size / 1024 / 1024).toFixed(1)} MB</div></div></div></td>
         <td>${esc(f.category)}</td>
         <td class="muted">${fmtDate(f.uploadedAt)}</td>
-        <td>${f.category === 'Pool Renderings' ? `<label class="check" style="margin:0"><input type="checkbox" ${f.isCoverPhoto ? 'checked' : ''} onchange="setCover('${c.id}','${f.id}',this.checked)"> ⭐ Contract Cover Photo</label>` : ''}</td>
+        <td>${f.category === 'Pool Renderings' ? `
+          <select class="input" style="max-width:120px;margin:0 0 6px" onchange="setRenderOption('${c.id}','${f.id}',this.value)">
+            <option value="A" ${f.renderOption !== 'B' ? 'selected' : ''}>Option A</option><option value="B" ${f.renderOption === 'B' ? 'selected' : ''}>Option B</option>
+          </select>
+          <label class="check" style="margin:0"><input type="checkbox" ${f.isCoverPhoto ? 'checked' : ''} onchange="setCover('${c.id}','${f.id}',this.checked)"> ⭐ Contract Cover Photo</label>` : ''}</td>
         <td>${visCell}</td>
         <td class="right" style="white-space:nowrap">
           <a class="btn secondary small" href="/api/clients/${c.id}/files/${f.id}/download">⬇</a>
@@ -906,8 +912,10 @@ function tFiles(c) {
     </div>`;
 }
 window.upCatChanged = function () {
-  const isInvoice = ['Material Invoices', 'Labor Invoices'].includes($('#upCat').value);
+  const cat = $('#upCat').value;
+  const isInvoice = ['Material Invoices', 'Labor Invoices'].includes(cat);
   $('#upAmtWrap').style.display = isInvoice ? '' : 'none';
+  $('#upOptWrap').style.display = cat === 'Pool Renderings' ? '' : 'none';
 };
 window.doUpload = async function (id) {
   const files = $('#upFiles').files;
@@ -915,6 +923,7 @@ window.doUpload = async function (id) {
   const fd = new FormData();
   fd.append('category', $('#upCat').value);
   if ($('#upAmt') && $('#upAmt').value) fd.append('invoiceAmount', $('#upAmt').value);
+  if ($('#upCat').value === 'Pool Renderings') fd.append('renderOption', $('#upOpt').value);
   for (const f of files) fd.append('files', f);
   try {
     const r = await api('POST', `/api/clients/${id}/files`, fd);
@@ -977,6 +986,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Escape') { closeModal(); }
 });
 window.setCover = async function (id, fid, on) { await api('POST', `/api/clients/${id}/files/${fid}/cover`, { isCoverPhoto: on }); await reload(); route(); toast(on ? 'Set as contract cover photo' : 'Cover photo removed'); };
+window.setRenderOption = async function (id, fid, opt) { await api('POST', `/api/clients/${id}/files/${fid}/option`, { option: opt }); await reload(); route(); toast(`Rendering moved to Option ${opt}`); };
 window.setVisibility = async function (id, fid, on) { await api('POST', `/api/clients/${id}/files/${fid}/visibility`, { clientVisible: on }); await reload(); route(); toast(on ? 'File is now visible on the client portal' : 'File hidden from the client portal'); };
 window.delFile = async function (id, fid) { if (!confirm('Delete this file?')) return; await api('DELETE', `/api/clients/${id}/files/${fid}`); await reload(); route(); };
 window.emailFiles = function (id) {

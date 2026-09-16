@@ -244,7 +244,9 @@ function publicClientView(c, { readOnly = false } = {}) {
       const sharedSource = c.contract.signedAt ? allFiles : [];
       const meta = f => ({ id: f.id, name: f.originalName, category: f.category, isImage: isImg(f.originalName) });
       return {
-        renderings: allFiles.filter(f => f.category === 'Pool Renderings').map(meta),
+        // Each rendering carries its design option (A by default; B for an
+        // alternate design) so the portal can show them as two tabs.
+        renderings: allFiles.filter(f => f.category === 'Pool Renderings').map(f => ({ ...meta(f), option: renderOption(f) })),
         sharedFiles: sharedSource.filter(f => f.clientVisible && f.category !== 'Pool Renderings' && f.category !== 'Signed Contract').map(meta),
       };
     })(),
@@ -1155,6 +1157,10 @@ app.post('/api/clients/:id/repair/invoice', wrap(async (req, res) => {
 // Files
 // ---------------------------------------------------------------------------
 const INVOICE_COST_CATEGORY = { 'Material Invoices': 'Materials', 'Labor Invoices': 'Labor' };
+// Pool Renderings can be grouped into two design options. Files uploaded before
+// this existed (or with no option chosen) are Option A.
+const RENDER_OPTIONS = ['A', 'B'];
+const renderOption = f => RENDER_OPTIONS.includes(f.renderOption) ? f.renderOption : 'A';
 
 app.post('/api/clients/:id/files', upload.array('files', 20), wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
@@ -1166,6 +1172,7 @@ app.post('/api/clients/:id/files', upload.array('files', 20), wrap(async (req, r
       id: store.id(), originalName: f.originalname, storedName: f.filename,
       category, size: f.size, uploadedAt: new Date().toISOString(), isCoverPhoto: false,
     };
+    if (category === 'Pool Renderings') rec.renderOption = renderOption({ renderOption: req.body.renderOption });
     c.files.push(rec);
     // Invoice uploads automatically create a matching line on Costs (Internal).
     if (INVOICE_COST_CATEGORY[category]) {
@@ -1195,6 +1202,18 @@ app.get('/api/clients/:id/files/:fileId/download', (req, res) => {
 app.post('/api/clients/:id/files/:fileId/cover', (req, res) => {
   const c = getClient(req, res); if (!c) return;
   for (const f of c.files) f.isCoverPhoto = (f.id === req.params.fileId) ? !!req.body.isCoverPhoto : false;
+  store.save();
+  res.json(c);
+});
+
+// Move a Pool Rendering between design Option A and Option B (portal tabs).
+app.post('/api/clients/:id/files/:fileId/option', (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  const f = c.files.find(f => f.id === req.params.fileId);
+  if (!f) return res.status(404).json({ error: 'File not found' });
+  if (f.category !== 'Pool Renderings') return res.status(400).json({ error: 'Only Pool Renderings have design options' });
+  if (!RENDER_OPTIONS.includes(req.body.option)) return res.status(400).json({ error: 'Option must be A or B' });
+  f.renderOption = req.body.option;
   store.save();
   res.json(c);
 });
