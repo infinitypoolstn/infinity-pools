@@ -463,7 +463,7 @@ app.put('/api/clients/:id', (req, res) => {
       c.finance = store.specsToFinance(b.specs);
     }
   }
-  for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'secondSignerEmail', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'disclosures', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
+  for (const k of ['name', 'address', 'email', 'phone', 'additionalEmails', 'secondSignerEmail', 'billingEmails', 'status', 'targetFinishDate', 'projectType', 'repair', 'scope', 'disclosures', 'notes', 'specNotes', 'selectedFinishes', 'clientTodos', 'projectOverview', 'siteExcavation', 'landscaping', 'contacts']) {
     if (b[k] !== undefined) c[k] = b[k];
   }
   if (b.finance !== undefined) {
@@ -947,6 +947,36 @@ app.post('/api/settings/quickbooks/test', wrap(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
+// Point a job at the QuickBooks customer/Project its transactions bill to. Called
+// from the Contract-tab picker and from the "choose a Project" step in every
+// create-invoice dialog. An empty ref clears it, so a new customer named after the
+// client is created instead. The choice sticks on the job, so the progress and
+// change-order invoices that follow land under the same Project.
+async function setQbProject(c, ref) {
+  const raw = String(ref == null ? '' : ref).trim();
+  if (!raw) {
+    c.quickbooks.qbCustomerId = null; c.quickbooks.qbCustomerName = '';
+    store.save();
+    return null;
+  }
+  const resolved = await quickbooks.resolveCustomer(raw);
+  c.quickbooks.qbCustomerId = resolved.id;
+  c.quickbooks.qbCustomerName = resolved.name;
+  store.save();
+  return resolved;
+}
+// Apply the Project picked in a create-invoice dialog. Omitting the field keeps
+// whatever the job already had. Returns an error message when the choice can't be
+// honored, or null when there is nothing to do.
+async function applyQbProjectChoice(c, body) {
+  if (body.qbCustomerId === undefined) return null;
+  // Same lock the Contract-tab picker enforces: once the estimate exists, the
+  // progress invoices drawn against it have to stay with that customer.
+  if (c.quickbooks.estimateId) return 'The QuickBooks estimate already exists, so the customer/Project is locked — its progress invoices must stay with that customer.';
+  await setQbProject(c, body.qbCustomerId);
+  return null;
+}
+
 // Manually create QB customer + master invoice when auto-creation failed at signing.
 app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => {
   const c = getClient(req, res); if (!c) return;
@@ -954,6 +984,8 @@ app.post('/api/clients/:id/quickbooks/create-invoice', wrap(async (req, res) => 
   if (!c.contract.signedAt) return res.status(400).json({ error: 'Contract has not been signed yet.' });
   if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
   if (c.quickbooks.invoiceId) return res.status(400).json({ error: 'A QuickBooks invoice already exists for this client.' });
+  const qbProjectError = await applyQbProjectChoice(c, req.body || {});
+  if (qbProjectError) return res.status(400).json({ error: qbProjectError });
   await quickbooks.createContractInvoice(c, store.quoteTotal(c));
   store.save();
   res.json({ client: c });
@@ -973,16 +1005,7 @@ app.post('/api/clients/:id/quickbooks/attach-project', wrap(async (req, res) => 
   if (c.testMode) return res.status(400).json({ error: 'This is a test job — invoicing is disabled.' });
   if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
   if (c.quickbooks.estimateId) return res.status(400).json({ error: 'The QuickBooks estimate already exists, so the customer/Project is locked. Attach a Project before the estimate is created.' });
-  const ref = String(req.body.customerId || req.body.ref || '').trim();
-  if (!ref) { // clear -> back to auto-created new customer
-    c.quickbooks.qbCustomerId = null; c.quickbooks.qbCustomerName = '';
-    store.save();
-    return res.json({ client: c, attached: null });
-  }
-  const resolved = await quickbooks.resolveCustomer(ref);
-  c.quickbooks.qbCustomerId = resolved.id;
-  c.quickbooks.qbCustomerName = resolved.name;
-  store.save();
+  const resolved = await setQbProject(c, req.body.customerId || req.body.ref || '');
   res.json({ client: c, attached: resolved });
 }));
 
@@ -994,6 +1017,8 @@ app.post('/api/clients/:id/quickbooks/create-estimate', wrap(async (req, res) =>
   if (!c.contract.signedAt) return res.status(400).json({ error: 'Contract has not been signed yet.' });
   if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
   if (c.quickbooks.estimateId) return res.status(400).json({ error: 'A QuickBooks estimate already exists for this project.' });
+  const qbProjectError = await applyQbProjectChoice(c, req.body || {});
+  if (qbProjectError) return res.status(400).json({ error: qbProjectError });
   await quickbooks.createContractEstimate(c, store.quoteTotal(c));
   store.save();
   res.json({ client: c });
@@ -1123,7 +1148,7 @@ app.post('/api/clients/:id/change-orders/:coId/send-invoice', wrap(async (req, r
   if (!co) return res.status(404).json({ error: 'Change order not found' });
   if (!co.qbInvoiceId) return res.status(400).json({ error: 'No QuickBooks invoice for this change order yet' });
   await quickbooks.sendInvoiceById(c, co.qbInvoiceId);
-  store.addAlert(`${c.address}: change order invoice sent to ${c.email} — "${co.description}"`, { clientId: c.id, type: 'info' });
+  store.addAlert(`${c.address}: change order invoice sent to ${[c.email, ...store.billingEmails(c)].filter(Boolean).join(', ')} — "${co.description}"`, { clientId: c.id, type: 'info' });
   store.save();
   res.json({ ok: true });
 }));
@@ -1136,9 +1161,11 @@ app.post('/api/clients/:id/repair/invoice', wrap(async (req, res) => {
   if (c.projectType !== 'repair') return res.status(400).json({ error: 'This project is not a repair.' });
   if (r.responsible !== 'client') return res.status(400).json({ error: 'Set “Client responsible” before invoicing.' });
   if (!(Number(r.budget) > 0)) return res.status(400).json({ error: 'Set a repair budget greater than $0 first.' });
-  if (!c.email) return res.status(400).json({ error: 'Client has no email address on file.' });
+  if (!c.email && !store.billingEmails(c).length) return res.status(400).json({ error: 'Client has no email address on file.' });
   if (c.testMode) return res.status(400).json({ error: 'Test job — no invoice is created.' });
   if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected. Paste a payment link instead, or connect QuickBooks in Settings.' });
+  const qbProjectError = await applyQbProjectChoice(c, req.body || {});
+  if (qbProjectError) return res.status(400).json({ error: qbProjectError });
   await quickbooks.createRepairInvoice(c);
   try {
     await quickbooks.sendInvoiceById(c, c.repair.qb.invoiceId);

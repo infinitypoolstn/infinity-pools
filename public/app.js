@@ -359,6 +359,7 @@ window.editClientInfo = function (id) {
     <label class="fld">Email <span class="muted" style="font-weight:400;font-size:12px">— primary authorized signer</span><input type="email" id="eEmail" value="${esc(c.email)}"></label>
     <label class="fld">Second authorized signer email<input type="email" id="eSigner2" value="${esc(c.secondSignerEmail || '')}" placeholder="cosigner@email.com"><span class="muted" style="font-weight:400;font-size:12px">Optional. This person can log in and sign the contract too — either signer can sign.</span></label>
     <label class="fld">Additional portal emails<input type="text" id="eAddlEmails" value="${esc((c.additionalEmails || []).join(', '))}" placeholder="spouse@email.com, builder@email.com"><span class="muted" style="font-weight:400;font-size:12px">Comma-separated. They also receive the portal link and can log in, but view-only (cannot sign).</span></label>
+    <label class="fld">Invoice-only emails<input type="text" id="eBillingEmails" value="${esc((c.billingEmails || []).join(', '))}" placeholder="bookkeeper@email.com, office@builder.com"><span class="muted" style="font-weight:400;font-size:12px">Comma-separated. Copied on every QuickBooks invoice and phase payment request. No portal access and cannot sign.</span></label>
     <label class="fld">Phone<input type="tel" id="ePhone" value="${esc(c.phone)}"></label>
     <label class="fld">Status<select id="eStatus">${Object.entries(statusLabel).map(([k, v]) => `<option value="${k}" ${c.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     <label class="fld">Target Finish Date<input type="date" id="eFinish" value="${c.targetFinishDate || ''}"></label>
@@ -370,9 +371,11 @@ window.editClientInfo = function (id) {
     </div>`);
 };
 window.saveClientInfo = async function (id) {
-  const additionalEmails = ($('#eAddlEmails').value || '').split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  const splitEmails = v => (v || '').split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  const additionalEmails = splitEmails($('#eAddlEmails').value);
+  const billingEmails = splitEmails($('#eBillingEmails').value);
   try {
-    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, secondSignerEmail: ($('#eSigner2').value || '').trim(), additionalEmails, phone: $('#ePhone').value, status: $('#eStatus').value, targetFinishDate: $('#eFinish').value || null });
+    await api('PUT', '/api/clients/' + id, { name: $('#eName').value, address: $('#eAddr').value, email: $('#eEmail').value, secondSignerEmail: ($('#eSigner2').value || '').trim(), additionalEmails, billingEmails, phone: $('#ePhone').value, status: $('#eStatus').value, targetFinishDate: $('#eFinish').value || null });
     await reload(); closeModal(); route(); toast('Saved');
   } catch (e) { toast(e.message, true); }
 };
@@ -1075,6 +1078,7 @@ function tContract(c) {
         <p>Quote total: <b class="money">${money(total)}</b>${c._coTotal ? ` &nbsp;+ COs <b class="money">${money(c._coTotal)}</b> = <b class="money">${money(total + c._coTotal)}</b>` : ''}</p>
         <p class="muted">Sent: ${c.contract.sentAt ? fmtDate(c.contract.sentAt) : 'not yet'} · Signed: ${c.contract.signedAt ? fmtDate(c.contract.signedAt) + ' (' + c.contract.signedMethod + (c.contract.depositMethod ? ', deposit by ' + c.contract.depositMethod : '') + ')' : 'not yet'}</p>
         <p class="muted" style="font-size:12px">Authorized signer${c.secondSignerEmail ? 's' : ''}: ${[c.email, c.secondSignerEmail].filter(Boolean).map(esc).join(' · ') || '<span style="color:var(--bad,#c0392b)">no email on file</span>'} — <a href="#" onclick="editClientInfo('${c.id}');return false;">edit</a>. Either can sign in the portal.</p>
+        <p class="muted" style="font-size:12px">Invoices &amp; payment requests go to ${esc(c.email || 'no email on file')}${(c.billingEmails || []).length ? ', copying <b>' + (c.billingEmails || []).map(esc).join(', ') + '</b>' : ''} — <a href="#" onclick="editClientInfo('${c.id}');return false;">edit</a>.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <a class="btn secondary" href="/api/clients/${c.id}/contract.pdf" target="_blank">⬇ Preview Contract PDF</a>
           <button class="btn secondary" onclick="sendContract('${c.id}')">📧 Email PDF to Client</button>
@@ -1194,19 +1198,94 @@ window.attachSignedPdf = async function (id) {
     toast('Signed PDF attached');
   } catch (e) { toast(e.message, true); }
 };
-window.createQbInvoice = async function (id) {
-  if (!confirm('Create QuickBooks customer and master invoice now?')) return;
+/* ---------- Shared "which QuickBooks Project?" step ----------
+   Every create-invoice dialog opens with this block. It defaults to whatever the
+   job is already pointed at; choosing a different Project re-points the job just
+   before the invoice is created, so the draws and change orders that follow roll
+   up under the same one. */
+function qbProjectPickerHTML(c) {
+  if (!S.quickbooksConnected || c.testMode) return '';
+  const cur = c.quickbooks.qbCustomerName;
+  const curLabel = cur ? esc(cur) : 'new customer (' + esc(c.name) + ')';
+  // Once the estimate exists the customer is locked — the progress invoices drawn
+  // against it have to stay with it — so show where it bills instead of a picker.
+  if (c.quickbooks.estimateId) {
+    return `<p class="muted" style="font-size:12px;margin:10px 0 0">Bills under <b>${curLabel}</b> — locked to the existing QuickBooks estimate.</p>`;
+  }
+  return `<div class="fld" style="display:block;margin-top:12px">
+    <b>QuickBooks Project</b>
+    <p class="muted" style="font-weight:400;font-size:12px;margin:2px 0 6px">This invoice — and every draw after it — bills under this Project.</p>
+    <select class="input" id="qbPickSel" style="margin-bottom:6px">
+      <option value="__keep__">Keep: ${curLabel}</option>
+      <option value="">Create a new customer named "${esc(c.name)}"</option>
+    </select>
+    <div class="row" style="align-items:center;gap:8px">
+      <button type="button" class="btn secondary small" onclick="loadQbPickerProjects()">↻ Reload Projects</button>
+      <input class="input grow" id="qbPickRef" placeholder="…or paste Project name / ID">
+    </div>
+  </div>`;
+}
+// Load the account's Projects into the picker, keeping the two fixed choices on top.
+window.loadQbPickerProjects = async function () {
+  const sel = document.getElementById('qbPickSel');
+  if (!sel) return;
+  const fixed = Array.from(sel.options).slice(0, 2).map(o => o.outerHTML).join('');
+  sel.innerHTML = fixed + '<option disabled>Loading…</option>';
   try {
-    await api('POST', `/api/clients/${id}/quickbooks/create-invoice`);
-    await reload(); route();
+    const r = await api('GET', '/api/quickbooks/projects');
+    const list = r.projects || [];
+    sel.innerHTML = fixed + (list.length
+      ? list.map(p => `<option value="${p.id}">${esc(p.name || '')}</option>`).join('')
+      : '<option disabled>No Projects found — paste a name/ID below</option>');
+  } catch (e) { sel.innerHTML = fixed; toast(e.message, true); }
+};
+// Body fields for the create call: {} keeps the job's current Project, otherwise
+// qbCustomerId carries the new choice ('' meaning "make a new customer").
+function qbProjectChoice() {
+  const ref = ((document.getElementById('qbPickRef') || {}).value || '').trim();
+  if (ref) return { qbCustomerId: ref };
+  const sel = document.getElementById('qbPickSel');
+  if (!sel || sel.value === '__keep__') return {};
+  return { qbCustomerId: sel.value };
+}
+// Who QuickBooks will email this invoice to — the client plus any invoice-only copies.
+function billingRecipientsNote(c) {
+  const cc = (c.billingEmails || []).filter(Boolean);
+  return `<p class="muted" style="font-size:12px;margin:8px 0 0">Emails ${esc(c.email || 'the client')}${cc.length ? ' and copies ' + cc.map(esc).join(', ') : ''}. <a href="#" onclick="closeModal();editClientInfo('${c.id}');return false;">Edit recipients</a></p>`;
+}
+
+window.createQbInvoice = function (id) {
+  const c = client(id);
+  modal(`<h2>Create Master Invoice</h2>
+    <p class="muted">One QuickBooks invoice for the full contract total (${money(c._quote)}); phase draws are partial payments against it.</p>
+    ${qbProjectPickerHTML(c)}
+    ${billingRecipientsNote(c)}
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button class="btn secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="confirmCreateQbInvoice('${id}')">Create Invoice</button>
+    </div>`, () => loadQbPickerProjects());
+};
+window.confirmCreateQbInvoice = async function (id) {
+  try {
+    await api('POST', `/api/clients/${id}/quickbooks/create-invoice`, qbProjectChoice());
+    await reload(); closeModal(); route();
     toast('QuickBooks customer and master invoice created successfully');
   } catch (e) { toast(e.message, true); }
 };
-window.createQbEstimate = async function (id) {
-  if (!confirm('Create QuickBooks estimate now?')) return;
+window.createQbEstimate = function (id) {
+  const c = client(id);
+  modal(`<h2>Create QuickBooks Estimate</h2>
+    <p class="muted">Puts the full contract total (${money(c._quote)}) on a QuickBooks estimate. Each phase draw is then billed as a progress invoice against it.</p>
+    ${qbProjectPickerHTML(c)}
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button class="btn secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="confirmCreateQbEstimate('${id}')">Create Estimate</button>
+    </div>`, () => loadQbPickerProjects());
+};
+window.confirmCreateQbEstimate = async function (id) {
   try {
-    await api('POST', `/api/clients/${id}/quickbooks/create-estimate`);
-    await reload(); route();
+    await api('POST', `/api/clients/${id}/quickbooks/create-estimate`, qbProjectChoice());
+    await reload(); closeModal(); route();
     toast('QuickBooks estimate created — phase draws will invoice against it');
   } catch (e) { toast(e.message, true); }
 };
@@ -1767,9 +1846,19 @@ window.saveRepair = async function (id) {
   try { await api('PUT', '/api/clients/' + id, { repair }); await reload(); route(); toast('Repair saved'); }
   catch (e) { toast(e.message, true); }
 };
-window.sendRepairInvoice = async function (id) {
-  if (!confirm('Create and email a QuickBooks invoice to the client for this repair?')) return;
-  try { await api('POST', `/api/clients/${id}/repair/invoice`); await reload(); route(); toast('Repair invoice created & sent'); }
+window.sendRepairInvoice = function (id) {
+  const c = client(id);
+  modal(`<h2>Create &amp; Send Repair Invoice</h2>
+    <p class="muted">Creates a QuickBooks invoice for ${money(Number((c.repair || {}).budget) || 0)} and emails a Pay Now link.</p>
+    ${qbProjectPickerHTML(c)}
+    ${billingRecipientsNote(c)}
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button class="btn secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="confirmSendRepairInvoice('${id}')">Create &amp; Send</button>
+    </div>`, () => loadQbPickerProjects());
+};
+window.confirmSendRepairInvoice = async function (id) {
+  try { await api('POST', `/api/clients/${id}/repair/invoice`, qbProjectChoice()); await reload(); closeModal(); route(); toast('Repair invoice created & sent'); }
   catch (e) { toast(e.message, true); }
 };
 
@@ -2483,7 +2572,7 @@ async function vAlerts() {
     <div class="card">
       <h2>Email Log (Gmail)</h2>
       <table class="tbl"><thead><tr><th>When</th><th>To</th><th>Subject</th><th>Status</th></tr></thead><tbody>
-      ${S.outbox.map(o => `<tr><td class="muted" style="white-space:nowrap">${ago(o.createdAt)}</td><td>${esc(o.to)}</td><td>${esc(o.subject)}</td>
+      ${S.outbox.map(o => `<tr><td class="muted" style="white-space:nowrap">${ago(o.createdAt)}</td><td>${esc(o.to)}${o.cc ? `<div class="muted" style="font-size:11px">cc ${esc(o.cc)}</div>` : ''}</td><td>${esc(o.subject)}</td>
         <td>${o.status === 'sent' ? '<span class="chip active">sent</span>' : `<span class="chip prospect" title="${esc(o.error || '')}">${esc(o.status)}</span>`}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No emails yet.</td></tr>'}
       </tbody></table>
     </div>
