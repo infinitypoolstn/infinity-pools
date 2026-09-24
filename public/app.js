@@ -1096,7 +1096,11 @@ function tContract(c) {
              <p class="muted" style="font-size:12px">Legacy single invoice for the full contract; phase draws are partial payments against it.</p>`
           : c.quickbooks.estimateUrl
             ? `<p style="margin-top:10px">Estimate: <a href="${c.quickbooks.estimateUrl}" target="_blank">open in QuickBooks ↗</a>${c.quickbooks.qbCustomerName ? ` <span class="muted">· under Project <b>${esc(c.quickbooks.qbCustomerName)}</b></span>` : ''}</p>
-               <p class="muted" style="font-size:12px">Full contract total as a QuickBooks estimate. Each phase draw is billed as a progress invoice against it when the phase goes active.</p>
+               <p class="muted" style="font-size:12px">The QuickBooks record of the signed contract total. Each phase draw is billed on its own invoice naming this estimate — QuickBooks only builds true progress invoicing through its own screens, not the API.</p>
+               ${c.quickbooks.estimateClosedAt
+                 ? `<p class="muted" style="font-size:12px">Estimate closed ${fmtDate(c.quickbooks.estimateClosedAt)} so it doesn't read as an open quote.</p>`
+                 : `<div class="banner warn" style="margin-top:8px;font-size:12px">This estimate is still open in QuickBooks, so it shows the full contract as though unbilled. Closing it changes no balance — estimates are non-posting.</div>
+                    <button class="btn secondary small" style="margin-top:6px" onclick="closeQbEstimate('${c.id}')">Close estimate in QuickBooks</button>`}
                ${(() => { const inv = (c.phases || []).filter(p => p.qbInvoiceUrl); return inv.length
                  ? `<div style="margin-top:8px"><b style="font-size:13px">Progress invoices</b>${inv.map(p => `<div style="font-size:13px;margin-top:3px">${esc(p.name)} <span class="muted">· ${p.drawPct}%</span> — <a href="${p.qbInvoiceUrl}" target="_blank">open ↗</a>${p.paymentReceivedAt ? ' <span style="color:var(--good,#1f8a4c)">✓ paid</span>' : ''}</div>`).join('')}</div>`
                  : '<p class="muted" style="font-size:12px;margin-top:6px">No progress invoices yet — the first is created when a phase draw is requested.</p>'; })()}`
@@ -1318,6 +1322,14 @@ window.detachQbProject = async function (id) {
     await api('POST', `/api/clients/${id}/quickbooks/attach-project`, {});
     await reload(); route();
     toast('Reverted to a new QuickBooks customer');
+  } catch (e) { toast(e.message, true); }
+};
+window.closeQbEstimate = async function (id) {
+  if (!confirm('Close this estimate in QuickBooks?\n\nIt stays on file as the record of the signed contract, but stops showing as an open quote for the full amount. No invoice, payment or balance is affected — estimates are non-posting.')) return;
+  try {
+    await api('POST', `/api/clients/${id}/quickbooks/close-estimate`);
+    await reload(); route();
+    toast('Estimate closed in QuickBooks');
   } catch (e) { toast(e.message, true); }
 };
 window.linkQbInvoice = async function (id) {

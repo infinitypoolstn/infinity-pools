@@ -1024,6 +1024,20 @@ app.post('/api/clients/:id/quickbooks/create-estimate', wrap(async (req, res) =>
   res.json({ client: c });
 }));
 
+// Backfill for jobs whose estimate was created before we started closing them:
+// close it in QuickBooks so it stops presenting as an open quote for the full
+// contract. Non-posting — no balance, invoice or payment is touched.
+app.post('/api/clients/:id/quickbooks/close-estimate', wrap(async (req, res) => {
+  const c = getClient(req, res); if (!c) return;
+  if (!quickbooks.connected()) return res.status(400).json({ error: 'QuickBooks is not connected.' });
+  if (!c.quickbooks.estimateId) return res.status(400).json({ error: 'This project has no QuickBooks estimate.' });
+  await quickbooks.closeEstimate(c.quickbooks.estimateId);
+  c.quickbooks.estimateClosedAt = new Date().toISOString();
+  store.addAlert(`${c.address}: QuickBooks estimate closed — phase draws are billed on their own invoices.`, { clientId: c.id, type: 'info' });
+  store.save();
+  res.json({ client: c });
+}));
+
 // Link an invoice already created in QuickBooks (e.g. an older job invoiced there
 // directly) to this project, by invoice number or ID. Payments stay manual.
 app.post('/api/clients/:id/quickbooks/link-invoice', wrap(async (req, res) => {
